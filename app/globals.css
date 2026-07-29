@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  --imenu-primary-50: #fff1f3;
+  --imenu-primary-600: #d9233f;
+  --imenu-primary-700: #b81831;
+  --imenu-neutral-950: #1d1d1f;
+  --imenu-neutral-600: #66666d;
+  --imenu-neutral-200: #e8e8ec;
+  --imenu-neutral-50: #f8f8fa;
+  --imenu-white: #ffffff;
+  --imenu-success: #198754;
+  --imenu-warning: #d98300;
+  --imenu-danger: #b42318;
+  --imenu-info: #2563eb;
+
+  --background: var(--imenu-neutral-50);
+  --foreground: var(--imenu-neutral-950);
+}
+
+@theme inline {
+  --color-primary-50: var(--imenu-primary-50);
+  --color-primary-600: var(--imenu-primary-600);
+  --color-primary-700: var(--imenu-primary-700);
+  --color-neutral-950: var(--imenu-neutral-950);
+  --color-neutral-600: var(--imenu-neutral-600);
+  --color-neutral-200: var(--imenu-neutral-200);
+  --color-neutral-50: var(--imenu-neutral-50);
+  --color-success: var(--imenu-success);
+  --color-warning: var(--imenu-warning);
+  --color-danger: var(--imenu-danger);
+  --color-info: var(--imenu-info);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+
+  --radius-card: 12px;
+  --radius-control: 10px;
+  --radius-chip: 999px;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--imenu-primary-600);
+  outline-offset: 2px;
+}
