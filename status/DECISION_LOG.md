@@ -77,6 +77,41 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** este projeto serve apenas como ambiente de desenvolvimento/teste (equivalente a "local/dev" em `docs/06_ARQUITETURA_TECNICA.md` e `docs/13_DEPLOY_OPERACAO_E_AMBIENTES.md`). Staging e produção exigirão projetos Supabase próprios e exclusivos antes do lançamento, com decisão de domínio ainda pendente do responsável do produto.
 - **Aprovado por:** usuário, via resposta direta em 29/07/2026.
 
+## D-011 — Autenticação por e-mail e senha (Supabase Auth)
+
+- **Data:** 29/07/2026
+- **Contexto:** a documentação (docs/06) define "Supabase Auth" e "recuperação de senha", mas não especifica o método de login (senha vs. link mágico) para funcionários/administradores. Não há decisão de MVP registrada sobre isso.
+- **Decisão:** login por e-mail e senha via `supabase.auth.signInWithPassword`, sem OAuth social nem magic link no MVP. Mensagem de erro genérica ("E-mail ou senha inválidos") para não permitir enumeração de contas.
+- **Alternativas consideradas:** magic link (evita gerenciar senha, mas exige provedor de e-mail transacional configurado, que é opcional/não configurado no MVP conforme `docs/13` e `.env.example`) — rejeitado por criar uma dependência externa obrigatória para uma função crítica (login) que hoje não tem provedor de e-mail habilitado (`ENABLE_EMAIL_DELIVERY=false`).
+- **Impacto:** baixo risco, decisão de implementação que não altera escopo, custo ou regra comercial. Recuperação de senha (reset) fica para uma fase posterior quando necessário; hoje o Supabase Auth já suporta o fluxo padrão caso seja preciso ativá-lo.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-012 — Ausência de policy de INSERT em `establishment_members` para o papel `authenticated`
+
+- **Data:** 29/07/2026
+- **Contexto:** ao desenhar as políticas RLS da Fase 1 (docs/02, seção 6), o único fluxo documentado que cria uma linha em `establishment_members` é o aceite de convite (`member_invites`) pelo próprio servidor, ou o bootstrap do owner inicial de um estabelecimento pelo admin geral (RF-ADM-002) — ambos rotinas de servidor, não uma ação direta de um owner/manager autenticado via cliente.
+- **Decisão:** não criar uma policy de `INSERT` para o papel `authenticated` nesta tabela nesta fase. A criação de membros acontece apenas via `lib/supabase/admin.ts` (service role, ignora RLS) ou, na Fase 8, por uma função `SECURITY DEFINER` dedicada de aceite de convite que valida token/e-mail/expiração antes de inserir.
+- **Alternativas consideradas:** permitir que owner/manager insiram linhas de `establishment_members` diretamente (mais simples), rejeitada por ampliar a superfície de ataque sem necessidade real: nenhum fluxo do MVP precisa disso, e permitir inserção livre abriria a possibilidade de um owner injetar um `user_id` arbitrário sem passar pela verificação de e-mail do convite.
+- **Impacto:** o bootstrap do primeiro owner e o aceite de convites (Fase 8) precisarão de rotinas de servidor explícitas; isso já era esperado pelo plano de implementação (`docs/12`, Fase 8 = "equipe/convites").
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-013 — Aviso de segurança aceito: `authenticated` executa os helpers de RLS via RPC
+
+- **Data:** 29/07/2026
+- **Contexto:** o advisor de segurança do Supabase (`get_advisors`) sinaliza que `is_active_member`, `has_tenant_role` e `is_platform_admin` são `SECURITY DEFINER` executáveis pelo papel `authenticated` via `/rest/v1/rpc/...`.
+- **Decisão:** manter o `EXECUTE` concedido a `authenticated` nessas três funções. Revogar quebraria as próprias políticas RLS, que dependem dessas funções para verificar associação/papel sem recursão (rodam como o dono da função, que ignora RLS internamente).
+- **Alternativas consideradas:** mover as funções para um schema não exposto via API — rejeitada porque as políticas RLS ainda precisariam invocá-las como o papel do usuário autenticado, exigindo `EXECUTE` de qualquer forma.
+- **Impacto:** chamar essas funções diretamente via RPC devolve apenas um booleano sobre a própria associação do usuário chamador — a mesma informação que ele já obtém com um `select` comum nas tabelas protegidas por RLS. Nenhum dado adicional é exposto.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-014 — Renomeação de `middleware.ts` para `proxy.ts`
+
+- **Data:** 29/07/2026
+- **Contexto:** `npm run build` no Next.js 16.2.12 emitiu aviso de depreciação: a convenção de arquivo `middleware.ts` foi renomeada para `proxy.ts` (a função exportada também muda de `middleware` para `proxy`).
+- **Decisão:** renomear o arquivo e a função exportada para seguir a convenção atual do framework e eliminar o aviso, sem alterar o comportamento (renovação de cookies de sessão do Supabase Auth).
+- **Impacto:** nenhum — mudança de nomenclatura apenas, mesma função no mesmo caminho de execução.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
 ## Modelo de nova entrada
 
 ```md

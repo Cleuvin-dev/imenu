@@ -22,12 +22,15 @@ export const APP_ERROR_CODES = {
 
 export type AppErrorCode = keyof typeof APP_ERROR_CODES;
 
+/** Compatível com o retorno de `ZodError.flatten().fieldErrors`. */
+export type AppErrorFieldErrors = Record<string, string[] | undefined>;
+
 export type AppErrorShape = {
   code: AppErrorCode;
   message: string;
   status: number;
   requestId: string;
-  fieldErrors?: Record<string, string[]>;
+  fieldErrors?: AppErrorFieldErrors;
   details?: Record<string, unknown>;
 };
 
@@ -35,7 +38,7 @@ export class AppError extends Error {
   readonly code: AppErrorCode;
   readonly status: number;
   readonly requestId: string;
-  readonly fieldErrors?: Record<string, string[]>;
+  readonly fieldErrors?: AppErrorFieldErrors;
   readonly details?: Record<string, unknown>;
 
   constructor(
@@ -43,7 +46,7 @@ export class AppError extends Error {
     options: {
       requestId: string;
       message?: string;
-      fieldErrors?: Record<string, string[]>;
+      fieldErrors?: AppErrorFieldErrors;
       details?: Record<string, unknown>;
     },
   ) {
