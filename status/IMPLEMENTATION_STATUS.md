@@ -1,6 +1,6 @@
 # Status de implementação — iMenu MVP
 
-**Atualizado em:** 30/07/2026 (Fase 5 concluída)  
+**Atualizado em:** 30/07/2026 (Fase 5 concluída; bug do deploy na Vercel corrigido)  
 **Estado inicial:** documentação concluída; implementação ainda não iniciada.
 
 ## Como atualizar
@@ -274,11 +274,11 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 - Fase 5 concluída: pedido transacional (ver seção "Fase 5 concluída" acima para a lista completa de migrações e arquivos).
 - Arquivos principais: `supabase/migrations/20260730100000..100008_*.sql`, `supabase/tests/0005_orders_transactional.sql`, `tests/unit/ordering-domain.test.ts`, `lib/rate-limit/`, `modules/ordering/`, `app/api/public/orders/`, `app/(public)/pedido/[trackingToken]/`, `app/(public)/m/[establishmentSlug]/t/[tableToken]/carrinho/cart-client.tsx`, `modules/service-session/domain/cart.ts`, `app/(establishment)/painel/pedidos/`.
 - Verificado em 30/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (40/40) e `npm run build` passam. `npm run test:e2e` roda sem erro mas não encontra nenhum arquivo de teste (bloqueio já conhecido). Testes AC-ORD-002 a 008 executados via MCP contra `imenu-dev` com sucesso (rollback completo). Fluxo completo do consumidor (QR → produto → carrinho → **enviar pedido de verdade** → acompanhamento público, token/QR inválidos) testado em navegador real via Playwright contra o servidor de dev + `imenu-dev` reais, sem erros de console; o pedido criado foi conferido no banco e depois transicionado para `accepted` via RPC direto, com a página de acompanhamento refletindo a mudança. Ver D-023 para a lacuna de verificação do lado do painel (sem senha da conta demo).
-- **Working tree com alterações pendentes de commit** — esta sessão não commitou nem fez push; aguardando instrução do responsável.
+- Deploy na Vercel funcionando de ponta a ponta, incluindo o cardápio público (ver D-027).
 
 ## Onde retomar (próxima sessão)
 
-- **Repositório:** último commit publicado em `origin/main` continua sendo `d078905` (Fases 0–4). As mudanças da Fase 5 estão no working tree local, ainda sem commit.
+- **Repositório:** Fases 0–5 publicadas em `origin/main`, mais o deploy na Vercel e a correção do bug do cardápio público (D-025 a D-027).
 - **Próxima etapa a iniciar: Fase 6 — Operação em tempo real.** Escopo (docs/12): KDS (kitchen display), assinatura Realtime do Supabase para pedidos/disponibilidade, alertas sonoros/visuais para pedido novo, reconexão com invalidação de cache (não confiar só em eventos perdidos), polling de segurança a cada 15s, filtros por status, disponibilidade rápida direto do KDS.
 - **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`.
 - **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection, senha da conta demo (ver tabela "Bloqueios externos").
@@ -297,28 +297,22 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 
 A pedido do responsável, criado um segundo estabelecimento fictício completo em `imenu-dev` só para visualização (categorias, 10 produtos publicados com foto placeholder, grupo de opções de tamanho na pizza, mesa com QR real, dono próprio). Ver `status/DECISION_LOG.md` D-024 para detalhes e para a lição sobre login real de usuário inserido manualmente (`auth.identities` + colunas de token vazias em vez de `NULL`). Mesmo regime de D-016: não é seed formal, remover/desativar antes de produção.
 
-## Primeiro deploy na Vercel (30/07/2026) e bug em aberto — pausado aqui
-
-**Estado do repositório:** `origin/main` está em `0ea188b` (inclui Fase 5 completa — commitada pelo próprio responsável em `78d97cb` fora desta sessão —, o fix de build `266aca8`/D-025 e o registro D-024/D-026). Working tree local tem **1 alteração não commitada**: `modules/service-session/application/get-public-menu.ts` ganhou 3 `console.error` de diagnóstico temporário (nos três pontos que retornam `{valid:false}`) — **não commitados, não enviados, não removidos ainda**.
+## Primeiro deploy na Vercel (30/07/2026) — bug do cardápio público resolvido
 
 **Deploy:** conectado GitHub → Vercel, domínio estável `https://imenu-nu.vercel.app` (env vars configuradas: Supabase URL/anon key, peppers, CRON_SECRET, RATE_LIMIT_PROVIDER=memory). Login funcionando (`owner-cantina@imenu.demo` / `CantinaDemo123!`, e `superadmin@imenu.demo` / `SuperAdminDemo123!` — ver D-026).
 
-### Bug em aberto: cardápio público sempre mostra "QR Code inválido" no deploy da Vercel
+### Bug resolvido: cardápio público sempre mostrava "QR Code inválido" no deploy da Vercel
 
-**Sintoma:** `https://imenu-nu.vercel.app/m/{slug}/t/{token}` sempre renderiza o estado de QR inválido, para **qualquer** estabelecimento/mesa testado (Cantina da Nonna **e** Restaurante Demo iMenu/Mesa 7) — não é specific de um dado.
+**Sintoma:** `https://imenu-nu.vercel.app/m/{slug}/t/{token}` sempre renderizava o estado de QR inválido, para qualquer estabelecimento/mesa (Cantina da Nonna e Restaurante Demo iMenu/Mesa 7).
 
-**Já descartado (confirmado durante a investigação):**
-- Dado no banco: `select` direto confirma a mesa/token existem, `is_active=true`, estabelecimento ativo.
-- A própria função `get_public_menu(slug, token)` chamada via SQL (`set role anon`) retorna o cardápio completo perfeitamente (testado para Cantina da Nonna com sucesso).
-- Domínio/URL errado, cache de deploy antigo (`DEPLOYMENT_NOT_FOUND`) — era um problema real e separado, já resolvido (era `NEXT_PUBLIC_APP_URL` apontando para uma URL de deploy específico em vez do domínio estável do projeto).
-- Cliente Supabase mal configurado — descartado porque `/entrar` (login) e `/painel/*` (dashboard, mesas, regenerar token) funcionam perfeitamente no mesmo deploy, usando o mesmo `createSupabaseServerClient()`.
+**Causa raiz confirmada:** `NEXT_PUBLIC_SUPABASE_URL` em Production/Preview na Vercel não apontava para o projeto Supabase (`https://vvqhvnnsnhwoywbaxcwg.supabase.co`) — a chamada `supabase.rpc("get_public_menu", ...)` estava indo para o próprio domínio do app (`imenu-nu.vercel.app`) e recebendo de volta a página 404 padrão do Next.js (confirmado lendo os Runtime Logs reais da Vercel via `npx vercel logs`, não só os logs do Supabase). Ver `status/DECISION_LOG.md`, D-027, para a investigação completa.
 
-**Evidência mais importante encontrada:** nos logs da API do Supabase (`get_logs`, service `api`), aparecem normalmente as chamadas de `/painel/*` (`auth/v1/user`, `rest/v1/establishment_members`, `rest/v1/rpc/evaluate_establishment_access`, etc.) — mas **nunca** aparece nenhuma chamada a `rest/v1/rpc/get_public_menu`, mesmo logo depois de testar a URL pública repetidas vezes. Ou seja: a chamada RPC do cardápio público parece **nunca sair do servidor** — a função `getPublicMenu()` (`modules/service-session/application/get-public-menu.ts`) está retornando `{valid:false}` antes de chegar em `supabase.rpc(...)`.
+**Correção aplicada e verificada em 30/07/2026:**
+1. `NEXT_PUBLIC_SUPABASE_URL` removida e recriada em Production e Preview na Vercel com o valor correto (obtido via `get_project_url` do MCP do Supabase, não adivinhado).
+2. Redeploy de produção disparado (`vercel deploy --prod`).
+3. Testado contra a URL pública real: `cantina-da-nonna`/Mesa 1 e `restaurante-demo-imenu`/Mesa 7 renderizam o cardápio completo; `npx vercel logs` confirma zero logs de erro nas duas requisições.
+4. Os 3 `console.error` de diagnóstico temporário em `modules/service-session/application/get-public-menu.ts` foram removidos — a função volta a falhar fechado silenciosamente, como o comentário do arquivo já documentava.
+5. `npm run lint`, `npm run typecheck`, `npm test` (40/40) e `npm run build` executados novamente após a remoção — todos passam.
 
-**Suspeita principal (não confirmada ainda):** o `checkRateLimit()` (`lib/rate-limit/`, adicionado na Fase 5 especificamente para essa função) pode estar retornando `allowed:false` sempre no ambiente serverless da Vercel — só essa chamada teria esse comportamento diferente de `/entrar`/`/painel`, que não passam pelo rate limiter. Ainda não confirmado por log real do lado da aplicação (só tenho acesso aos logs do Supabase via MCP, não aos logs de runtime/função da própria Vercel).
-
-**Próximo passo ao retomar:**
-1. Decidir se comita o diagnóstico (`console.error` já escrito) e pede para o responsável reproduzir o erro e colar o conteúdo da aba **"Logs"/"Runtime Logs"** do projeto na Vercel (isso vai mostrar exatamente qual dos 3 `console.error` disparou e por quê).
-2. Com a causa confirmada, corrigir de verdade e **remover os `console.error` de diagnóstico**.
-3. Reconfirmar com o teste de navegador (Playwright) e com o teste manual do responsável no celular.
+**Observação sobre ferramentas usadas nesta investigação:** foi necessário autenticar o Vercel CLI (`npx vercel`) e vincular o repositório local ao projeto `imenu` na Vercel para ler os Runtime Logs reais — sem isso, a única evidência disponível era a ausência de chamadas nos logs do Supabase, insuficiente para confirmar a causa. `.vercel/` está no `.gitignore`. O responsável autorizou explicitamente checar e depois sobrescrever a variável antes de qualquer alteração em produção.
 
