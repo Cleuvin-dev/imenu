@@ -212,6 +212,14 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** nenhum dado exposto; a aplicação nunca dependeu de fato de variáveis de ambiente no momento do build (é 100% dinâmica), então isso só destrava o deploy em qualquer plataforma que rode `next build` antes de as variáveis públicas estarem garantidamente presentes nesse instante.
 - **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
 
+## D-026 — Primeiro deploy na Vercel + conta de administrador de plataforma de demonstração
+
+- **Data:** 30/07/2026
+- **Contexto:** o responsável pediu para deixar a aplicação hospedada (GitHub + Vercel) para acompanhar o progresso, e depois perguntou como acessar o `/admin-geral` (painel do administrador de plataforma) — nenhuma conta com esse papel existia ainda (`admin@imenu.local` e `owner-cantina@imenu.demo` são só donos de estabelecimento).
+- **Decisão:** (1) GitHub conectado à Vercel com deploy automático a cada push em `main` (conforme `docs/13`); build corrigido para não depender de variáveis de ambiente em tempo de build (D-025); (2) criado usuário de demonstração `superadmin@imenu.demo` com papel `super_admin` em `platform_admins`, separado das contas de estabelecimento, a pedido explícito do responsável ("crie um usuário novo só para isso").
+- **Impacto:** a aplicação está publicamente acessível numa URL da Vercel apontando para o mesmo banco `imenu-dev` (não é ainda o ambiente de produção formal com projeto Supabase exclusivo, conforme `docs/13 §2`). Credenciais de demonstração não ficam neste arquivo nem em nenhum lugar do repositório.
+- **Aprovado por:** usuário, via pedidos diretos em 30/07/2026.
+
 ## Modelo de nova entrada
 
 ```md
