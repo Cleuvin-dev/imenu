@@ -130,6 +130,15 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** existe uma conta sintética persistente em `imenu-dev` (não é seed formal de `docs/14`, não deve ser confundida com dado de produção). Antes de produção, o checklist de `docs/10 §10` já prevê "contas demo removidas ou desativadas" — este registro serve de lembrete de que esta conta específica existe.
 - **Aprovado por:** usuário, via resposta direta em 29/07/2026.
 
+## D-017 — Segunda variante do problema de D-015: grant nomeado direto a `anon`
+
+- **Data:** 29/07/2026
+- **Contexto:** ao criar `publish_product` e `set_product_availability` (Fase 3), apliquei a lição de D-015 (`revoke all ... from public` logo após a criação). Mesmo assim, `get_advisors` e uma consulta a `has_function_privilege` confirmaram que `anon` continuava com `EXECUTE`. Uma consulta a `pg_proc.proacl` mostrou desta vez `{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}` — sem entrada `=X/postgres` (`PUBLIC`) nenhuma, mas com um grant **nomeado diretamente** para `anon`. Ou seja, o Supabase concede EXECUTE default de duas formas distintas (via `PUBLIC` ou via grants nomeados diretos a `anon`/`authenticated`/`service_role`), aparentemente sem um padrão totalmente previsível — `revoke ... from public` só resolve a primeira forma.
+- **Decisão:** revogar sempre dos dois jeitos ao mesmo tempo: `revoke all on function X from public, anon;` (ou `from public, anon, authenticated` quando nenhum dos dois deve ter acesso), seguido do `grant execute` só para quem precisa. Migração `20260729190014_catalog_functions_privilege_fix.sql`.
+- **Alternativas consideradas:** confiar apenas no `get_advisors` pós-migração — descartada porque o advisor já mostrou resultado obsoleto/cacheado nesta mesma sessão (Fase 1 e Fase 2); a única fonte confiável é consultar `has_function_privilege`/`pg_proc.proacl` diretamente logo após aplicar a migração.
+- **Impacto:** nenhum dado exposto de fato (pego antes de qualquer uso real). Regra prática atualizada para as próximas fases: toda função nova termina com `revoke all ... from public, anon` (mais `authenticated` quando aplicável) e a verificação de privilégio é feita por consulta direta, não só pelo advisor.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
 ## Modelo de nova entrada
 
 ```md

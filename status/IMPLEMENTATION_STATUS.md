@@ -1,6 +1,6 @@
 # Status de implementação — iMenu MVP
 
-**Atualizado em:** 29/07/2026 (Fase 2 concluída)  
+**Atualizado em:** 29/07/2026 (Fase 3 concluída)  
 **Estado inicial:** documentação concluída; implementação ainda não iniciada.
 
 ## Como atualizar
@@ -112,6 +112,38 @@ Todas aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` revalidado: o
 
 A pedido do responsável, para permitir clicar no fluxo real: usuário `admin@imenu.local` (owner do estabelecimento fictício "Restaurante Demo iMenu"). Sem assinatura própria ainda — os dados de assinatura usados nos testes acima foram inseridos e revertidos dentro da transação do script SQL, não persistem no banco.
 
+**Atualização (Fase 3):** para o gate de assinatura não bloquear o teste manual do catálogo, foi criado um plano (`demo-plan`) e uma assinatura `active` persistente para "Restaurante Demo iMenu" em `imenu-dev`. Também é dado de demonstração, não seed formal — ver checklist de produção em docs/10 §10 ("contas demo removidas ou desativadas").
+
+## Fase 3 concluída (29/07/2026) — Catálogo e mídias
+
+### Migrações (`supabase/migrations/`)
+
+- `20260729190010_catalog_tables.sql`: enums `product_status`, `media_kind`; tabelas `categories`, `products`, `product_media`, `option_groups`, `options`, `product_option_groups`, `business_hours`, `business_hour_exceptions`; triggers de guarda de tenant (produto↔categoria, mídia↔produto, opção↔grupo, produto-grupo↔ambos) que impedem vincular registros de estabelecimentos diferentes mesmo por uma via que escape da RLS.
+- `20260729190011_catalog_rls.sql`: RLS ativa/forçada nas 8 tabelas. Leitura ampla para qualquer membro ativo; escrita restrita a owner/manager/menu_editor (categorias/produtos/mídias/opções) ou owner/manager (horários). Sem policy para `anon` em nenhuma tabela — o cardápio público (Fase 4) lê por RPC dedicada, nunca por select direto. Políticas de SELECT/INSERT/UPDATE/DELETE separadas (em vez de `for all`) para não empilhar policies permissivas redundantes — zero avisos de "multiple permissive policies" desta vez.
+- `20260729190012_catalog_functions.sql` + `20260729190014_catalog_functions_privilege_fix.sql`: `publish_product` (valida categoria ativa, nome, descrição curta e preço não negativo antes de publicar — RF-EST-014) e `set_product_availability` (alternância rápida de esgotado/disponível, liberada também a kitchen/cashier). A correção de privilégio foi necessária de novo: desta vez o Supabase concedeu `EXECUTE` a `anon` como **grant nomeado** (não via `PUBLIC`), então `revoke ... from public` sozinho não bastou — registrado como D-017 junto com a lição da Fase 2 (D-015).
+- `20260729190013_catalog_storage.sql`: buckets `brand-media` e `menu-media` (públicos, com `file_size_limit`/`allowed_mime_types` como primeira camada de defesa) e políticas de `storage.objects` que derivam o `establishment_id` do primeiro segmento do caminho (`storage.foldername`).
+- `20260729190015_catalog_indexes.sql`: índices de cobertura para as FKs sinalizadas pelo advisor.
+
+Todas aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` revalidado após a correção de privilégio: nenhum aviso novo além dos já aceitos nas Fases 1–2.
+
+### Aplicação (Next.js)
+
+- `modules/catalog/`: schemas Zod (categoria, produto, grupo de opções, opção), `domain/slug.ts` (geração de slug estável, testado com nomes acentuados), `domain/labels.ts`, serviços de aplicação para categorias/produtos/opções — sempre recebendo `establishmentId` já validado pelo chamador (nunca do input do cliente).
+- `modules/media/`: `domain/validate-upload.ts` valida o arquivo pelos **magic bytes reais** (JPEG/PNG/WebP/MP4/WebM), nunca pelo `Content-Type` declarado — rejeita executável disfarçado, MIME divergente do conteúdo e arquivos acima de 5 MB (imagem) / 50 MB (vídeo); `application/upload-product-media.ts` faz upload para o Storage e só then insere `product_media`, removendo o objeto órfão do Storage se o insert falhar.
+- `app/(establishment)/painel/cardapio/categorias/`: lista com criação e edição inline (`<details>`, sem JavaScript extra), ativar/arquivar.
+- `app/(establishment)/painel/cardapio/produtos/`: lista com criação rápida, publicar, marcar esgotado/disponível, arquivar.
+- `app/(establishment)/painel/cardapio/produtos/[id]/`: editor completo — informações/preço/ingredientes/alergênicos, upload de mídia com prévia, grupos de opções (criar grupo, criar opção, anexar/remover do produto), publicar/arquivar/disponibilidade.
+
+### Testes AC-CAT-001 e validações de publicação
+
+- `supabase/tests/0003_catalog_gate.sql`: mesmo formato dos testes anteriores (rollback completo). Cobre: produto válido publica; produto sem descrição curta é rejeitado; produto de categoria inativa é rejeitado; arquivar muda o status sem apagar o registro; isolamento de tenant (owner de outro estabelecimento não lê nem escreve o catálogo); kitchen altera disponibilidade mas não publica nem edita categoria diretamente; `anon` não lê nenhuma tabela de catálogo.
+- **Executado com sucesso via MCP contra `imenu-dev` em 29/07/2026.**
+- `tests/unit/media-validation.test.ts`: 13 testes cobrindo detecção de magic bytes (JPEG/PNG/WebP/MP4/WebM), rejeição de executável disfarçado, divergência entre MIME declarado e real, e limites de tamanho — cobre AC-MEDIA-001 sem depender de rede/Storage real.
+
+### Verificação manual em navegador
+
+Fluxo completo testado via Playwright headless contra o servidor de dev real, autenticado como `admin@imenu.local`: criar categoria → criar produto (rascunho) → enviar imagem → publicar → lista de produtos reflete "Publicado". Sem erros de console. Capturas de tela geradas e descartadas após a verificação (não fazem parte do repositório).
+
 ## Fases
 
 | Fase | Estado | Evidência/observação |
@@ -119,8 +151,8 @@ A pedido do responsável, para permitir clicar no fluxo real: usuário `admin@im
 | 0 — Diagnóstico e fundação | Concluída (29/07/2026) | Repositório reestruturado (docs movidos para a raiz), Git inicializado **e primeiro commit publicado** (`9d41953`, `https://github.com/Cleuvin-dev/imenu.git`, branch `main`), Next.js 16 + TypeScript estrito + Tailwind v4 scaffolded, estrutura modular criada (`app/`, `components/`, `modules/`, `lib/`, `supabase/`, `tests/`, `public/`), design tokens do iMenu em `app/globals.css`, `.env.example`/`lib/env` com validação Zod, CI básica em `.github/workflows/ci.yml`, projeto Supabase de dev `imenu-dev` criado. `npm run lint`, `npm run typecheck`, `npm test` (6/6) e `npm run build` passam; `npm run start` respondeu HTTP 200 na home. Nenhum segredo versionado (`.env.local` ignorado por `.gitignore`). |
 | 1 — Identidade, tenancy e RLS | Concluída (29/07/2026) | 5 migrações aplicadas em `imenu-dev` via MCP; RLS ativa/forçada e testada (script SQL com rollback, sem persistir dados); login e seleção de tenant funcionando; layouts protegidos de `/painel` e `/admin-geral`; `npm run lint`, `npm run typecheck`, `npm test` (13/13) e `npm run build` passam. Ver seção "Fase 1 concluída" acima para detalhes. |
 | 2 — Assinatura e gate | Concluída (29/07/2026) | 5 migrações aplicadas em `imenu-dev` via MCP; AC-SUB-001 a AC-SUB-004 testados via script SQL (rollback completo); job de cron autenticado por segredo; gate aplicado no painel do estabelecimento; superadmin mínimo de estabelecimentos/faturas; `npm run lint`, `npm run typecheck`, `npm test` (13/13) e `npm run build` passam. Ver seção "Fase 2 concluída" acima. |
-| 3 — Catálogo e mídias | Não iniciada | Próxima fase. |
-| 4 — Mesas, QR e público | Não iniciada | — |
+| 3 — Catálogo e mídias | Concluída (29/07/2026) | 6 migrações aplicadas em `imenu-dev` via MCP (tabelas, RLS, funções, storage, índices); AC-CAT-001 testado via script SQL; upload validado por magic bytes (13 testes unitários); categorias/produtos/opções/mídia funcionando de ponta a ponta, testado em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 3 concluída" acima. |
+| 4 — Mesas, QR e público | Não iniciada | Próxima fase. |
 | 5 — Pedido transacional | Não iniciada | — |
 | 6 — Operação em tempo real | Não iniciada | — |
 | 7 — Conta e sessão da mesa | Não iniciada | — |
@@ -135,8 +167,8 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 |---|---|---|
 | Lint | Passou (`npm run lint`) | 29/07/2026 |
 | Typecheck | Passou (`npm run typecheck`) | 29/07/2026 |
-| Unitários | Passou — 13/13 (`npm test`) | 29/07/2026 |
-| Integração/RLS | Passou — `supabase/tests/0001_identity_tenancy_rls.sql` e `0002_billing_subscription_gate.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 29/07/2026 |
+| Unitários | Passou — 26/26 (`npm test`) | 29/07/2026 |
+| Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql` e `0003_catalog_gate.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 29/07/2026 |
 | E2E P0 | Não executado — depende das rotas das Fases 4–8 | — |
 | Build | Passou (`npm run build`) | 29/07/2026 |
 | Segurança (AC-SEC-001) | Passou — `SUPABASE_SERVICE_ROLE_KEY`/`CRON_SECRET` (nome e valor) ausentes de `.next/static` | 29/07/2026 |
@@ -157,16 +189,20 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 
 ## Última entrega
 
-- Fase 2 concluída: assinatura e gate de acesso (ver seção "Fase 2 concluída" acima para a lista completa de migrações e arquivos).
-- Arquivos principais: `supabase/migrations/20260729190005..190009_*.sql`, `supabase/tests/0002_billing_subscription_gate.sql`, `modules/billing/`, `app/api/internal/cron/process-overdue-subscriptions/route.ts`, `app/(platform)/admin-geral/estabelecimentos/`, `app/(establishment)/painel/{layout.tsx,owner-billing-summary.tsx}`.
-- Verificado em 29/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (13/13) e `npm run build` passam. Testes AC-SUB-001 a AC-SUB-004 executados via MCP contra `imenu-dev` com sucesso.
-- Commit local da Fase 1 (`081c101`) e da Fase 2 registrados nesta sessão — ver "Onde retomar" para o estado exato de publicação no remoto.
+- Fase 3 concluída: catálogo e mídias (ver seção "Fase 3 concluída" acima para a lista completa de migrações e arquivos).
+- Arquivos principais: `supabase/migrations/20260729190010..190015_*.sql`, `supabase/tests/0003_catalog_gate.sql`, `modules/catalog/`, `modules/media/`, `app/(establishment)/painel/cardapio/`, `tests/unit/media-validation.test.ts`, `eslint.config.mjs` (regra `argsIgnorePattern`).
+- Verificado em 29/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Teste AC-CAT-001 executado via MCP contra `imenu-dev` com sucesso. Fluxo completo (categoria → produto → mídia → publicação) testado em navegador real via Playwright, sem erros de console.
+- Commits locais das Fases 1 e 2 (`081c101`, `9fd0647`) já publicados em `origin/main` nesta sessão (push autorizado pelo responsável). Fase 3 **ainda não commitada** — ver "Onde retomar".
 
 ## Onde retomar (próxima sessão)
 
-- **Repositório:** branch `main` local à frente de `origin/main` (que ainda está no commit `9d41953`, só a Fase 0). Fases 1 e 2 commitadas localmente; **push ainda não foi feito** — avisar antes de publicar em repositório compartilhado.
-- **Próxima etapa a iniciar: Fase 3 — Catálogo e mídias.** Escopo: `categories`, `products`, `product_media`, `option_groups`, `options`, `product_option_groups`, `business_hours`/`business_hour_exceptions`; CRUD do estabelecimento; rascunho/prévia/publicação/esgotado/arquivo; upload validado (MIME real, tamanho, extensão); cache/invalidação; seed de cardápio. Gate: rascunho não é público, mídia válida funciona, tenant cruzado falha.
-- **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`. O endpoint de cron (`app/api/internal/cron/process-overdue-subscriptions`) já está pronto e testado via RPC direta, só falta essa chave para ser exercitado de ponta a ponta pela rota real.
+- **Repositório:** `origin/main` está em `9fd0647` (Fases 0–2 publicadas). O trabalho da Fase 3 está no working tree, **ainda não commitado nem publicado**.
+- **Próxima etapa a iniciar: Fase 4 — Mesas, QR e cardápio público.** Escopo: `dining_tables` e `table_service_sessions` (schema de docs/07 §5); geração de token aleatório de alta entropia por mesa; QR em PNG/SVG com rotação/invalidação; RPC pública de leitura limitada do cardápio (a mesma que a Fase 3 já previu não construir aqui — `evaluate_establishment_access` mais uma nova RPC de leitura de categorias/produtos publicados); rota pública `/m/[establishmentSlug]/t/[tableToken]`; contexto anônimo por cookie; cardápio mobile; horários e pausa de pedidos. Gate: QR válido/inválido/rotacionado; cardápio público fiel ao publicado; fechado/pausado/suspenso corretos.
+- **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`.
 - **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection (ver tabela "Bloqueios externos").
-- **Observação técnica para quem continuar:** `middleware.ts` foi renomeado para `proxy.ts` (convenção do Next.js 16.2); a lição sobre `GRANT EXECUTE TO PUBLIC` anular revokes nomeados (D-015) vale para qualquer função nova criada nas próximas fases — sempre `revoke ... from public` explicitamente, nunca só `from anon`/`from authenticated`.
+- **Observações técnicas para quem continuar:**
+  - `middleware.ts` foi renomeado para `proxy.ts` (convenção do Next.js 16.2).
+  - Lição repetida duas vezes agora (D-015 na Fase 2, D-017 na Fase 3): funções novas podem receber `GRANT EXECUTE` para `anon`/`authenticated` de duas formas diferentes — via `PUBLIC` (`revoke ... from public` resolve) ou via grant nomeado direto (só `revoke ... from <papel>` nomeado resolve). Depois de criar qualquer função nova, **sempre confirme com uma consulta direta** (`has_function_privilege`), não confie só no `get_advisors` (ele já mostrou resultado desatualizado/cacheado mais de uma vez nesta sessão).
+  - `eslint.config.mjs` agora ignora variáveis/parâmetros prefixados com `_` (convenção usada em `prevState`/`formData` não utilizados de `useActionState`).
+  - O gate de assinatura da Fase 2 bloqueia qualquer estabelecimento sem `subscriptions` ativa — o estabelecimento demo precisou ganhar um plano e assinatura persistentes em `imenu-dev` para o catálogo poder ser testado manualmente (ver "Dados de demonstração" acima).
 

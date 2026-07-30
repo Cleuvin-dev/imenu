@@ -1,5 +1,5 @@
 /**
- * Gerado a partir do schema do projeto Supabase `imenu-dev` (Fases 1-2).
+ * Gerado a partir do schema do projeto Supabase `imenu-dev` (Fases 1-3).
  * Regenerar sempre que uma migração alterar tabelas, enums ou funções
  * expostas via RPC. Não editar manualmente.
  */
@@ -64,6 +64,135 @@ export type Database = {
           },
           {
             foreignKeyName: "audit_logs_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      business_hour_exceptions: {
+        Row: {
+          closes_at: string | null;
+          created_at: string;
+          date: string;
+          establishment_id: string;
+          id: string;
+          is_closed: boolean;
+          note: string | null;
+          opens_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          closes_at?: string | null;
+          created_at?: string;
+          date: string;
+          establishment_id: string;
+          id?: string;
+          is_closed?: boolean;
+          note?: string | null;
+          opens_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          closes_at?: string | null;
+          created_at?: string;
+          date?: string;
+          establishment_id?: string;
+          id?: string;
+          is_closed?: boolean;
+          note?: string | null;
+          opens_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_hour_exceptions_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      business_hours: {
+        Row: {
+          closes_at: string | null;
+          created_at: string;
+          establishment_id: string;
+          id: string;
+          is_closed: boolean;
+          opens_at: string | null;
+          updated_at: string;
+          weekday: number;
+        };
+        Insert: {
+          closes_at?: string | null;
+          created_at?: string;
+          establishment_id: string;
+          id?: string;
+          is_closed?: boolean;
+          opens_at?: string | null;
+          updated_at?: string;
+          weekday: number;
+        };
+        Update: {
+          closes_at?: string | null;
+          created_at?: string;
+          establishment_id?: string;
+          id?: string;
+          is_closed?: boolean;
+          opens_at?: string | null;
+          updated_at?: string;
+          weekday?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_hours_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      categories: {
+        Row: {
+          archived_at: string | null;
+          created_at: string;
+          description: string | null;
+          establishment_id: string;
+          id: string;
+          is_active: boolean;
+          name: string;
+          sort_order: number;
+          updated_at: string;
+        };
+        Insert: {
+          archived_at?: string | null;
+          created_at?: string;
+          description?: string | null;
+          establishment_id: string;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          archived_at?: string | null;
+          created_at?: string;
+          description?: string | null;
+          establishment_id?: string;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "categories_establishment_id_fkey";
             columns: ["establishment_id"];
             isOneToOne: false;
             referencedRelation: "establishments";
@@ -336,6 +465,101 @@ export type Database = {
           },
         ];
       };
+      option_groups: {
+        Row: {
+          created_at: string;
+          establishment_id: string;
+          id: string;
+          is_active: boolean;
+          max_select: number;
+          min_select: number;
+          name: string;
+          sort_order: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          establishment_id: string;
+          id?: string;
+          is_active?: boolean;
+          max_select: number;
+          min_select?: number;
+          name: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          establishment_id?: string;
+          id?: string;
+          is_active?: boolean;
+          max_select?: number;
+          min_select?: number;
+          name?: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "option_groups_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      options: {
+        Row: {
+          created_at: string;
+          establishment_id: string;
+          id: string;
+          is_available: boolean;
+          name: string;
+          option_group_id: string;
+          price_delta_cents: number;
+          sort_order: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          establishment_id: string;
+          id?: string;
+          is_available?: boolean;
+          name: string;
+          option_group_id: string;
+          price_delta_cents?: number;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          establishment_id?: string;
+          id?: string;
+          is_available?: boolean;
+          name?: string;
+          option_group_id?: string;
+          price_delta_cents?: number;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "options_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "options_option_group_id_fkey";
+            columns: ["option_group_id"];
+            isOneToOne: false;
+            referencedRelation: "option_groups";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       payments: {
         Row: {
           amount_cents: number;
@@ -496,6 +720,196 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: true;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      product_media: {
+        Row: {
+          alt_text: string | null;
+          created_at: string;
+          establishment_id: string;
+          id: string;
+          is_primary: boolean;
+          kind: Database["public"]["Enums"]["media_kind"];
+          mime_type: string;
+          poster_path: string | null;
+          product_id: string;
+          size_bytes: number;
+          sort_order: number;
+          storage_path: string;
+          updated_at: string;
+        };
+        Insert: {
+          alt_text?: string | null;
+          created_at?: string;
+          establishment_id: string;
+          id?: string;
+          is_primary?: boolean;
+          kind: Database["public"]["Enums"]["media_kind"];
+          mime_type: string;
+          poster_path?: string | null;
+          product_id: string;
+          size_bytes: number;
+          sort_order?: number;
+          storage_path: string;
+          updated_at?: string;
+        };
+        Update: {
+          alt_text?: string | null;
+          created_at?: string;
+          establishment_id?: string;
+          id?: string;
+          is_primary?: boolean;
+          kind?: Database["public"]["Enums"]["media_kind"];
+          mime_type?: string;
+          poster_path?: string | null;
+          product_id?: string;
+          size_bytes?: number;
+          sort_order?: number;
+          storage_path?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_media_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "product_media_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      product_option_groups: {
+        Row: {
+          created_at: string;
+          establishment_id: string;
+          id: string;
+          option_group_id: string;
+          product_id: string;
+          sort_order: number;
+        };
+        Insert: {
+          created_at?: string;
+          establishment_id: string;
+          id?: string;
+          option_group_id: string;
+          product_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          created_at?: string;
+          establishment_id?: string;
+          id?: string;
+          option_group_id?: string;
+          product_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_option_groups_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "product_option_groups_option_group_id_fkey";
+            columns: ["option_group_id"];
+            isOneToOne: false;
+            referencedRelation: "option_groups";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "product_option_groups_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      products: {
+        Row: {
+          allergens: string[];
+          archived_at: string | null;
+          base_price_cents: number;
+          category_id: string;
+          created_at: string;
+          description: string | null;
+          establishment_id: string;
+          id: string;
+          ingredients: string[];
+          is_available: boolean;
+          name: string;
+          nutrition: Json | null;
+          published_at: string | null;
+          short_description: string | null;
+          slug: string;
+          sort_order: number;
+          status: Database["public"]["Enums"]["product_status"];
+          updated_at: string;
+        };
+        Insert: {
+          allergens?: string[];
+          archived_at?: string | null;
+          base_price_cents: number;
+          category_id: string;
+          created_at?: string;
+          description?: string | null;
+          establishment_id: string;
+          id?: string;
+          ingredients?: string[];
+          is_available?: boolean;
+          name: string;
+          nutrition?: Json | null;
+          published_at?: string | null;
+          short_description?: string | null;
+          slug: string;
+          sort_order?: number;
+          status?: Database["public"]["Enums"]["product_status"];
+          updated_at?: string;
+        };
+        Update: {
+          allergens?: string[];
+          archived_at?: string | null;
+          base_price_cents?: number;
+          category_id?: string;
+          created_at?: string;
+          description?: string | null;
+          establishment_id?: string;
+          id?: string;
+          ingredients?: string[];
+          is_available?: boolean;
+          name?: string;
+          nutrition?: Json | null;
+          published_at?: string | null;
+          short_description?: string | null;
+          slug?: string;
+          sort_order?: number;
+          status?: Database["public"]["Enums"]["product_status"];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "categories";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "products_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
             referencedColumns: ["id"];
           },
         ];
@@ -702,18 +1116,25 @@ export type Database = {
         Returns: boolean;
       };
       process_overdue_subscriptions: { Args: { p_now?: string }; Returns: Json };
+      publish_product: { Args: { p_product_id: string }; Returns: Json };
       reverse_payment: {
         Args: { p_payment_id: string; p_reason: string };
+        Returns: Json;
+      };
+      set_product_availability: {
+        Args: { p_is_available: boolean; p_product_id: string };
         Returns: Json;
       };
     };
     Enums: {
       audit_actor_scope: "platform" | "establishment" | "system";
       invoice_status: "draft" | "open" | "paid" | "overdue" | "void";
+      media_kind: "image" | "video";
       member_role: "owner" | "manager" | "menu_editor" | "kitchen" | "cashier" | "viewer";
       payment_method: "pix" | "boleto" | "transfer" | "cash" | "card" | "other";
       payment_status: "confirmed" | "reversed";
       platform_role: "super_admin" | "platform_admin" | "platform_support";
+      product_status: "draft" | "published" | "archived";
       subscription_status: "trialing" | "active" | "past_due" | "suspended" | "canceled";
       suspension_reason: "overdue" | "manual" | "fraud" | "contract_end" | "other";
     };
