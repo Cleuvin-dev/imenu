@@ -4,6 +4,9 @@ import { getPlatformAdminContext } from "@/lib/auth/platform";
 import { PLATFORM_ROLE_LABELS } from "@/modules/platform-admin/domain/platform-role-labels";
 import { signOutAction } from "@/app/(platform)/admin-geral/actions";
 
+// Ver justificativa em app/(establishment)/painel/layout.tsx.
+export const dynamic = "force-dynamic";
+
 export default async function AdminGeralLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthenticatedUser();
   if (!user) {

@@ -7,6 +7,14 @@ import { selectEstablishmentAction, clearActiveEstablishmentAction, signOutActio
 import { evaluateEstablishmentAccess } from "@/modules/billing/application/evaluate-establishment-access";
 import { OwnerBillingSummary } from "@/app/(establishment)/painel/owner-billing-summary";
 
+// Nunca prerenderizar em build: toda a árvore depende de sessão/cookies do
+// usuário. Sem isso, uma página-folha sem chamada dinâmica própria (ex.:
+// um redirect puro) pode ser escolhida pelo Next para pré-renderização em
+// build, executando este layout antes de qualquer variável de ambiente de
+// runtime estar disponível (quebra o build inteiro em vez de virar página
+// dinâmica normal).
+export const dynamic = "force-dynamic";
+
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthenticatedUser();
   if (!user) {

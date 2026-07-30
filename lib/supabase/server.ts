@@ -10,8 +10,13 @@ import type { Database } from "@/lib/supabase/database-types";
  * este cliente para operações que exigem bypass de RLS.
  */
 export async function createSupabaseServerClient() {
-  const env = getPublicEnv();
+  // cookies() PRIMEIRO: é o que sinaliza ao Next.js para desviar de uma
+  // tentativa de pré-renderização estática em build para renderização
+  // dinâmica de verdade. Se getPublicEnv() rodasse antes e uma variável de
+  // ambiente faltasse nesse momento do build, o erro do Zod interromperia
+  // o build inteiro antes do Next sequer perceber que a rota é dinâmica.
   const cookieStore = await cookies();
+  const env = getPublicEnv();
 
   return createServerClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
     cookies: {
