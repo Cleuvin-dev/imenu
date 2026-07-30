@@ -1,25 +1,38 @@
 import { z } from "zod";
 
+/**
+ * Variáveis opcionais chegam como string vazia quando declaradas mas não
+ * preenchidas em `.env.local` (ex.: `EMAIL_FROM=`) — `.optional()` sozinho só
+ * aceita `undefined`, não `""`. Sem isso, `z.url().optional()` rejeitaria uma
+ * URL opcional vazia como inválida em vez de tratá-la como ausente.
+ */
+const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
+const optionalString = () => z.preprocess(emptyToUndefined, z.string().optional());
+const optionalUrl = () => z.preprocess(emptyToUndefined, z.url().optional());
+
 const serverEnvSchema = z.object({
   APP_ENV: z.enum(["local", "staging", "production"]).default("local"),
   APP_TIMEZONE: z.string().min(1).default("America/Sao_Paulo"),
   NEXT_PUBLIC_APP_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  // Deliberadamente opcional aqui: só é exigida no ponto de uso
+  // (lib/supabase/admin.ts), para não derrubar todo o app enquanto o dono do
+  // produto não a obtiver no painel do Supabase (ver status/DECISION_LOG.md).
+  SUPABASE_SERVICE_ROLE_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   CRON_SECRET: z.string().min(16),
   ANONYMOUS_SESSION_PEPPER: z.string().min(16),
   INVITE_TOKEN_PEPPER: z.string().min(16),
   ORDER_TRACKING_TOKEN_PEPPER: z.string().min(16),
   IP_HASH_PEPPER: z.string().min(16),
   RATE_LIMIT_PROVIDER: z.enum(["memory", "upstash"]).default("memory"),
-  UPSTASH_REDIS_REST_URL: z.url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+  UPSTASH_REDIS_REST_URL: optionalUrl(),
+  UPSTASH_REDIS_REST_TOKEN: optionalString(),
   EMAIL_PROVIDER: z.enum(["console", "resend"]).default("console"),
-  EMAIL_FROM: z.string().optional(),
-  EMAIL_API_KEY: z.string().optional(),
-  SENTRY_DSN: z.string().optional(),
-  NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
+  EMAIL_FROM: optionalString(),
+  EMAIL_API_KEY: optionalString(),
+  SENTRY_DSN: optionalString(),
+  NEXT_PUBLIC_SENTRY_DSN: optionalString(),
   ENABLE_EMAIL_DELIVERY: z
     .enum(["true", "false"])
     .default("false")

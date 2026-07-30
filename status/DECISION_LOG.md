@@ -139,6 +139,15 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** nenhum dado exposto de fato (pego antes de qualquer uso real). Regra prática atualizada para as próximas fases: toda função nova termina com `revoke all ... from public, anon` (mais `authenticated` quando aplicável) e a verificação de privilégio é feita por consulta direta, não só pelo advisor.
 - **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
 
+## D-018 — `getServerEnv()` validava o schema inteiro mesmo quando só uma variável era necessária
+
+- **Data:** 29/07/2026
+- **Contexto:** ao testar o cardápio público da Fase 4 em navegador real, `hashGuestToken()` (que só precisa de `ANONYMOUS_SESSION_PEPPER`) chamou `getServerEnv()` e a página quebrou com `Error: Configuração de ambiente inválida: SUPABASE_SERVICE_ROLE_KEY: Too small...; UPSTASH_REDIS_REST_URL: Invalid URL`. Duas causas: (1) `SUPABASE_SERVICE_ROLE_KEY` está genuinamente vazia (bloqueio já documentado desde a Fase 0/1, só o dono do produto consegue obter no painel do Supabase) mas o schema exigia `min(1)` sem `.optional()`; (2) `UPSTASH_REDIS_REST_URL=` (declarada vazia em `.env.local`, provedor não usado no MVP) chegava como string vazia `""`, e `.optional()` do Zod só trata `undefined` como ausente — `""` ainda falha em `z.url()`. Como `getServerEnv()` valida o schema inteiro em toda chamada, qualquer código que precisasse de uma única variável não relacionada quebrava o app inteiro.
+- **Decisão:** (1) adicionar um helper `emptyToUndefined`/`optionalString`/`optionalUrl` (`z.preprocess`) que converte string vazia em `undefined` antes da validação, aplicado a todas as variáveis genuinamente opcionais do MVP (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `EMAIL_FROM`, `EMAIL_API_KEY`, `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`); (2) tornar `SUPABASE_SERVICE_ROLE_KEY` opcional no schema, movendo a exigência para o único ponto de uso real (`lib/supabase/admin.ts`, `createSupabaseAdminClient()`), que lança um erro específico e explicativo só quando alguém realmente tentar criar o cliente admin sem a chave configurada.
+- **Alternativas consideradas:** dividir `getServerEnv()` em múltiplos schemas menores por domínio (rejeitada por aumentar a complexidade sem necessidade agora — o problema real era a validação de opcionalidade, não o agrupamento); manter `SUPABASE_SERVICE_ROLE_KEY` obrigatória e preencher com um valor fictício em `.env.local` (rejeitada por poder mascarar o bloqueio real e por ir contra a regra de nunca simular segredo).
+- **Impacto:** nenhum dado exposto; o bug só impedia a página de carregar em desenvolvimento. Regra prática: exigir uma variável de ambiente apenas no ponto de uso real, nunca no carregamento global do schema, quando a variável não é necessária para o funcionamento básico do app.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
 ## Modelo de nova entrada
 
 ```md

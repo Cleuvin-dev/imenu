@@ -11,6 +11,14 @@ import type { Database } from "@/lib/supabase/database-types";
  */
 export function createSupabaseAdminClient() {
   const env = getServerEnv();
+
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY não configurada. Necessária para operações administrativas/cron " +
+        "(ver bloqueio registrado em status/IMPLEMENTATION_STATUS.md).",
+    );
+  }
+
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       autoRefreshToken: false,

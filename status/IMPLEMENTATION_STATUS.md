@@ -1,6 +1,6 @@
 # Status de implementação — iMenu MVP
 
-**Atualizado em:** 29/07/2026 (Fase 3 concluída)  
+**Atualizado em:** 29/07/2026 (Fase 4 concluída)  
 **Estado inicial:** documentação concluída; implementação ainda não iniciada.
 
 ## Como atualizar
@@ -144,6 +144,47 @@ Todas aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` revalidado ap
 
 Fluxo completo testado via Playwright headless contra o servidor de dev real, autenticado como `admin@imenu.local`: criar categoria → criar produto (rascunho) → enviar imagem → publicar → lista de produtos reflete "Publicado". Sem erros de console. Capturas de tela geradas e descartadas após a verificação (não fazem parte do repositório).
 
+## Fase 4 concluída (29/07/2026) — Mesas, QR e cardápio público
+
+### Migrações (`supabase/migrations/`)
+
+- `20260729190016_dining_tables.sql`: tabela `dining_tables` (`public_token` gerado via `gen_random_bytes(24)`, `token_version`, `is_active`, `sort_order`). RLS ativa/forçada: leitura para owner/manager/cashier/viewer, escrita só owner/manager.
+- `20260729190017_guest_sessions.sql`: tabela `guest_sessions` (sessão anônima por navegador+mesa). RLS ativa/forçada **sem nenhuma policy para `anon`/`authenticated`** — a única policy é leitura para platform admin; todo o acesso real acontece via RPC `SECURITY DEFINER`.
+- `20260729190018_public_menu_functions.sql`: primeira versão de `get_public_menu(slug, token)` e `ensure_guest_session(establishmentId, tableId, tokenHash, expiresAt)`.
+- `20260729190019_public_menu_indexes.sql`: índice de cobertura em `guest_sessions.table_id`.
+- `20260729190020_guest_sessions_composite_unique.sql`: **correção** — a constraint `unique` original era sobre `token_hash` isolado, o que quebraria se o mesmo cookie de navegador visitasse mesas de estabelecimentos diferentes. Trocada por `unique (establishment_id, table_id, token_hash)`.
+- `20260729190021_get_public_menu_include_ids.sql`: `get_public_menu` passou a incluir `establishment.id` no JSON de retorno (necessário no servidor para poder chamar `ensure_guest_session` em seguida).
+- `20260729190022_get_public_menu_hours.sql`: versão final de `get_public_menu`, com cálculo de horário de funcionamento (`business_hours`/`business_hour_exceptions`, convertendo `now()` para o fuso do estabelecimento) e `operation.acceptingOrders`. Termina com `revoke all ... from public, anon, authenticated` seguido de `grant execute` explícito — mesma lição de D-015/D-017, reaplicada aqui e verificada por consulta direta a `has_function_privilege`, não só pelo `get_advisors`.
+
+Todas aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` revalidado: nenhum aviso novo além dos já aceitos nas Fases 1–3.
+
+### Aplicação (Next.js)
+
+- `modules/tables/`: schema Zod de mesa; `domain/qr.ts` (`buildTableUrl`, geração de QR em PNG/SVG via pacote `qrcode`); `application/tables.ts` (criar/editar/ativar/desativar mesa, regenerar token — nunca reaproveita o token antigo, sempre gera novo com `crypto.randomBytes` e incrementa `token_version`).
+- `modules/service-session/`: `domain/guest-cookie.ts` (cookie de sessão anônima, gerado com Web Crypto API em `proxy.ts` por rodar em Edge runtime — não pode usar `node:crypto`); `domain/hash-token.ts` (hash HMAC-SHA256 do token com pimenta dedicada, roda em runtime Node); `domain/cart.ts` (carrinho 100% client-side em `localStorage`, sem chamada de rede); `application/get-public-menu.ts` (chama a RPC, valida a resposta com Zod fail-closed, registra a sessão anônima sem quebrar a página se o cookie ainda não existir).
+- `modules/media/domain/public-url.ts`: monta a URL pública de um objeto do Storage.
+- `proxy.ts`: agora também atribui o cookie de sessão anônima em qualquer rota `/m/*` que ainda não o tenha (Server Components não podem gravar cookies durante a renderização).
+- `app/api/establishments/mesas/[tableId]/qr/route.ts`: download autenticado do QR (PNG por padrão, SVG via `?format=svg`), valida papel (owner/manager) e que a mesa pertence ao estabelecimento ativo.
+- `app/(establishment)/painel/mesas/`: CRUD de mesas, links de download do QR, regenerar token com confirmação.
+- `app/(public)/m/[establishmentSlug]/t/[tableToken]/`: cardápio público mobile-first (busca, chips de categoria fixos, cards de produto), estados de QR inválido e estabelecimento fechado/bloqueado; `produto/[productSlug]/`: detalhe com mídia, grupos de opções (rádio/checkbox com validação de min/max), quantidade, observação, adicionar ao carrinho; `carrinho/`: revisão do carrinho local, quantidades editáveis, remoção, subtotal — botão "Enviar pedido" **permanece desabilitado de propósito**, com texto explicando que o envio real chega na Fase 5 (não simulado).
+
+### Testes AC-PUB-001, AC-PUB-002 e AC-QR-001
+
+- `supabase/tests/0004_public_menu_gate.sql`: mesmo formato dos testes anteriores (rollback completo). Cobre: QR válido mostra exatamente os produtos publicados (disponível + esgotado), excluindo rascunho/arquivado; token inexistente, slug inexistente, mesa desativada e token de outro estabelecimento retornam só `{valid:false}` sem vazar nenhuma chave adicional; estabelecimento sem assinatura ativa retorna `valid:true` mas `access.allowed:false` (interação com o gate da Fase 2); `ensure_guest_session` reaproveita a mesma sessão para o mesmo hash+mesa (idempotência); regenerar o token de uma mesa invalida o token antigo imediatamente e o novo funciona na hora (AC-QR-001).
+- **Executado com sucesso via MCP contra `imenu-dev` em 29/07/2026.**
+
+### Correção crítica durante a verificação: `getServerEnv()` quebrava por variável não relacionada
+
+Ao testar o cardápio público em navegador real, uma chamada que só precisava de `ANONYMOUS_SESSION_PEPPER` derrubava a página inteira porque `getServerEnv()` valida o schema completo a cada chamada, e duas outras variáveis estavam com problema (`SUPABASE_SERVICE_ROLE_KEY` vazia — bloqueio externo já conhecido — e `UPSTASH_REDIS_REST_URL=` vazia falhando em `.optional()`, que só aceita `undefined`, não string vazia). Corrigido em `lib/env/index.ts` (preprocess que trata string vazia como ausente) e `lib/supabase/admin.ts` (exigência de `SUPABASE_SERVICE_ROLE_KEY` movida para o ponto de uso). Detalhes completos em `status/DECISION_LOG.md`, D-018.
+
+### Verificação manual em navegador
+
+Fluxo completo testado via Playwright headless contra o servidor de dev real: (1) autenticado como `admin@imenu.local`, criação da mesa "Mesa 7" em `/painel/mesas`; (2) sem autenticação, acesso a um token inválido (tela "QR Code inválido"), depois ao token real da Mesa 7 — cardápio mostra "Restaurante Demo iMenu"/"Mesa 7"/"Suco de Laranja"; (3) abertura do produto, "Adicionar" ao carrinho, navegação até `/carrinho` mostrando o item, subtotal e o botão "Enviar pedido" corretamente desabilitado. Sem erros de console em nenhuma etapa (confirmado antes e depois da correção do bug de `getServerEnv()`). Capturas de tela geradas e descartadas após a verificação (não fazem parte do repositório).
+
+### Dados de demonstração criados em `imenu-dev` (fora do versionamento)
+
+Mesa "Mesa 7" (`public_token` real gerado pelo banco) criada via fluxo real do painel, para permitir testar o cardápio público de ponta a ponta. Mesmo regime de D-016: não é seed formal, deve ser removida/desativada antes de produção (docs/10 §10).
+
 ## Fases
 
 | Fase | Estado | Evidência/observação |
@@ -152,8 +193,8 @@ Fluxo completo testado via Playwright headless contra o servidor de dev real, au
 | 1 — Identidade, tenancy e RLS | Concluída (29/07/2026) | 5 migrações aplicadas em `imenu-dev` via MCP; RLS ativa/forçada e testada (script SQL com rollback, sem persistir dados); login e seleção de tenant funcionando; layouts protegidos de `/painel` e `/admin-geral`; `npm run lint`, `npm run typecheck`, `npm test` (13/13) e `npm run build` passam. Ver seção "Fase 1 concluída" acima para detalhes. |
 | 2 — Assinatura e gate | Concluída (29/07/2026) | 5 migrações aplicadas em `imenu-dev` via MCP; AC-SUB-001 a AC-SUB-004 testados via script SQL (rollback completo); job de cron autenticado por segredo; gate aplicado no painel do estabelecimento; superadmin mínimo de estabelecimentos/faturas; `npm run lint`, `npm run typecheck`, `npm test` (13/13) e `npm run build` passam. Ver seção "Fase 2 concluída" acima. |
 | 3 — Catálogo e mídias | Concluída (29/07/2026) | 6 migrações aplicadas em `imenu-dev` via MCP (tabelas, RLS, funções, storage, índices); AC-CAT-001 testado via script SQL; upload validado por magic bytes (13 testes unitários); categorias/produtos/opções/mídia funcionando de ponta a ponta, testado em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 3 concluída" acima. |
-| 4 — Mesas, QR e público | Não iniciada | Próxima fase. |
-| 5 — Pedido transacional | Não iniciada | — |
+| 4 — Mesas, QR e público | Concluída (29/07/2026) | 7 migrações aplicadas em `imenu-dev` via MCP (mesas, sessão anônima, RPCs de cardápio público, horário de funcionamento); AC-PUB-001, AC-PUB-002 e AC-QR-001 testados via script SQL (rollback completo); QR PNG/SVG por mesa com regeneração de token; cardápio público mobile + carrinho local testados de ponta a ponta em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 4 concluída" acima. |
+| 5 — Pedido transacional | Não iniciada | Próxima fase. |
 | 6 — Operação em tempo real | Não iniciada | — |
 | 7 — Conta e sessão da mesa | Não iniciada | — |
 | 8 — Administração completa | Não iniciada | — |
@@ -168,8 +209,8 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 | Lint | Passou (`npm run lint`) | 29/07/2026 |
 | Typecheck | Passou (`npm run typecheck`) | 29/07/2026 |
 | Unitários | Passou — 26/26 (`npm test`) | 29/07/2026 |
-| Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql` e `0003_catalog_gate.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 29/07/2026 |
-| E2E P0 | Não executado — depende das rotas das Fases 4–8 | — |
+| Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql`, `0003_catalog_gate.sql` e `0004_public_menu_gate.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 29/07/2026 |
+| E2E P0 | `npm run test:e2e` roda mas não encontra nenhum arquivo `*.spec.ts` — Playwright configurado (`playwright.config.ts`) porém nenhum teste E2E formal foi escrito ainda; verificação end-to-end até aqui foi feita via scripts Playwright ad-hoc descartáveis (ver "Verificação manual em navegador" de cada fase) | 29/07/2026 |
 | Build | Passou (`npm run build`) | 29/07/2026 |
 | Segurança (AC-SEC-001) | Passou — `SUPABASE_SERVICE_ROLE_KEY`/`CRON_SECRET` (nome e valor) ausentes de `.next/static` | 29/07/2026 |
 | Acessibilidade | Não executado | — |
@@ -189,20 +230,24 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 
 ## Última entrega
 
-- Fase 3 concluída: catálogo e mídias (ver seção "Fase 3 concluída" acima para a lista completa de migrações e arquivos).
-- Arquivos principais: `supabase/migrations/20260729190010..190015_*.sql`, `supabase/tests/0003_catalog_gate.sql`, `modules/catalog/`, `modules/media/`, `app/(establishment)/painel/cardapio/`, `tests/unit/media-validation.test.ts`, `eslint.config.mjs` (regra `argsIgnorePattern`).
-- Verificado em 29/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Teste AC-CAT-001 executado via MCP contra `imenu-dev` com sucesso. Fluxo completo (categoria → produto → mídia → publicação) testado em navegador real via Playwright, sem erros de console.
-- Commits locais das Fases 1 e 2 (`081c101`, `9fd0647`) já publicados em `origin/main` nesta sessão (push autorizado pelo responsável). Fase 3 **ainda não commitada** — ver "Onde retomar".
+- Fase 4 concluída: mesas, QR e cardápio público (ver seção "Fase 4 concluída" acima para a lista completa de migrações e arquivos).
+- Arquivos principais: `supabase/migrations/20260729190016..190022_*.sql`, `supabase/tests/0004_public_menu_gate.sql`, `modules/tables/`, `modules/service-session/`, `modules/media/domain/public-url.ts`, `app/(establishment)/painel/mesas/`, `app/(public)/m/[establishmentSlug]/t/[tableToken]/`, `app/api/establishments/mesas/[tableId]/qr/route.ts`, `proxy.ts` (cookie de sessão anônima), `lib/env/index.ts` e `lib/supabase/admin.ts` (correção D-018).
+- Verificado em 29/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam (reconfirmado **depois** da correção do bug de `getServerEnv()`, D-018). `npm run test:e2e` roda sem erro mas não encontra nenhum arquivo de teste (bloqueio já conhecido — nenhum `*.spec.ts` escrito ainda). Testes AC-PUB-001, AC-PUB-002 e AC-QR-001 executados via MCP contra `imenu-dev` com sucesso. Fluxo completo (criar mesa → baixar QR → abrir cardápio público → detalhe do produto → adicionar ao carrinho → revisar carrinho) testado em navegador real via Playwright, sem erros de console.
+- Commits locais das Fases 1–3 (`081c101`, `9fd0647`, `0cd9a6c`) já publicados em `origin/main` nesta sessão (push autorizado pelo responsável). Fase 4 **ainda não commitada** — ver "Onde retomar".
 
 ## Onde retomar (próxima sessão)
 
-- **Repositório:** `origin/main` está em `9fd0647` (Fases 0–2 publicadas). O trabalho da Fase 3 está no working tree, **ainda não commitado nem publicado**.
-- **Próxima etapa a iniciar: Fase 4 — Mesas, QR e cardápio público.** Escopo: `dining_tables` e `table_service_sessions` (schema de docs/07 §5); geração de token aleatório de alta entropia por mesa; QR em PNG/SVG com rotação/invalidação; RPC pública de leitura limitada do cardápio (a mesma que a Fase 3 já previu não construir aqui — `evaluate_establishment_access` mais uma nova RPC de leitura de categorias/produtos publicados); rota pública `/m/[establishmentSlug]/t/[tableToken]`; contexto anônimo por cookie; cardápio mobile; horários e pausa de pedidos. Gate: QR válido/inválido/rotacionado; cardápio público fiel ao publicado; fechado/pausado/suspenso corretos.
+- **Repositório:** `origin/main` está em `0cd9a6c` (Fases 0–3 publicadas). O trabalho da Fase 4 está no working tree, **ainda não commitado nem publicado**.
+- **Próxima etapa a iniciar: Fase 5 — Pedido transacional.** Escopo (docs/12): criação real de pedido a partir do carrinho local (hoje o botão "Enviar pedido" fica desabilitado de propósito em `/carrinho`), cálculo de total no servidor em transação (nunca confiar em preço/total enviado pelo navegador), snapshots de produto/preço/adicional no pedido, máquina de estados do pedido, idempotência do envio (evitar pedido duplicado por duplo clique/retry).
 - **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`.
 - **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection (ver tabela "Bloqueios externos").
 - **Observações técnicas para quem continuar:**
   - `middleware.ts` foi renomeado para `proxy.ts` (convenção do Next.js 16.2).
-  - Lição repetida duas vezes agora (D-015 na Fase 2, D-017 na Fase 3): funções novas podem receber `GRANT EXECUTE` para `anon`/`authenticated` de duas formas diferentes — via `PUBLIC` (`revoke ... from public` resolve) ou via grant nomeado direto (só `revoke ... from <papel>` nomeado resolve). Depois de criar qualquer função nova, **sempre confirme com uma consulta direta** (`has_function_privilege`), não confie só no `get_advisors` (ele já mostrou resultado desatualizado/cacheado mais de uma vez nesta sessão).
-  - `eslint.config.mjs` agora ignora variáveis/parâmetros prefixados com `_` (convenção usada em `prevState`/`formData` não utilizados de `useActionState`).
-  - O gate de assinatura da Fase 2 bloqueia qualquer estabelecimento sem `subscriptions` ativa — o estabelecimento demo precisou ganhar um plano e assinatura persistentes em `imenu-dev` para o catálogo poder ser testado manualmente (ver "Dados de demonstração" acima).
+  - Lição repetida três vezes agora (D-015 na Fase 2, D-017 na Fase 3, reaplicada na Fase 4): funções novas podem receber `GRANT EXECUTE` para `anon`/`authenticated` de duas formas diferentes — via `PUBLIC` (`revoke ... from public` resolve) ou via grant nomeado direto (só `revoke ... from <papel>` nomeado resolve). Depois de criar qualquer função nova, **sempre confirme com uma consulta direta** (`has_function_privilege`), não confie só no `get_advisors` (ele já mostrou resultado desatualizado/cacheado mais de uma vez nesta sessão).
+  - `eslint.config.mjs` agora ignora variáveis/parâmetros prefixados com `_` (convenção usada em `prevState`/`formData` não utilizados de `useActionState`) e tem `eslint-disable-next-line react-hooks/set-state-in-effect` pontual em `menu-browser.tsx`/`cart-client.tsx` (padrão SSR-safe de ler `localStorage` em `useEffect`, legítimo e não uma falha real).
+  - `lib/env/index.ts`: variáveis genuinamente opcionais usam `z.preprocess` para tratar string vazia como ausente (D-018) — ao adicionar uma nova variável opcional, seguir esse padrão, não `.optional()` puro. `SUPABASE_SERVICE_ROLE_KEY` agora é opcional no schema; a exigência real está em `lib/supabase/admin.ts`.
+  - Edge runtime (`proxy.ts`) não pode usar `node:crypto` — o cookie de sessão anônima usa Web Crypto API (`crypto.getRandomValues`) ali; o hash HMAC do token (que precisa da pimenta) roda depois, em contexto Node (`modules/service-session/domain/hash-token.ts`).
+  - `guest_sessions` não tem nenhuma policy de RLS para `anon`/`authenticated` — todo acesso é via RPC `SECURITY DEFINER` (`ensure_guest_session`, `get_public_menu`). Isso é intencional, não uma lacuna.
+  - O gate de assinatura da Fase 2 bloqueia qualquer estabelecimento sem `subscriptions` ativa — o estabelecimento demo precisou ganhar um plano e assinatura persistentes em `imenu-dev` para o catálogo/cardápio público poder ser testado manualmente (ver "Dados de demonstração" acima).
+  - Dado de demonstração novo nesta fase: mesa "Mesa 7" com token público real, criada via UI — não é seed formal (mesmo regime de D-016).
 

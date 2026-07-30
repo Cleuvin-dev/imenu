@@ -200,6 +200,50 @@ export type Database = {
           },
         ];
       };
+      dining_tables: {
+        Row: {
+          created_at: string;
+          establishment_id: string;
+          id: string;
+          is_active: boolean;
+          name: string;
+          public_token: string;
+          sort_order: number;
+          token_version: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          establishment_id: string;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          public_token?: string;
+          sort_order?: number;
+          token_version?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          establishment_id?: string;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          public_token?: string;
+          sort_order?: number;
+          token_version?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dining_tables_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       establishment_members: {
         Row: {
           created_at: string;
@@ -338,6 +382,51 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [];
+      };
+      guest_sessions: {
+        Row: {
+          created_at: string;
+          establishment_id: string;
+          expires_at: string;
+          id: string;
+          last_seen_at: string;
+          table_id: string;
+          token_hash: string;
+        };
+        Insert: {
+          created_at?: string;
+          establishment_id: string;
+          expires_at: string;
+          id?: string;
+          last_seen_at?: string;
+          table_id: string;
+          token_hash: string;
+        };
+        Update: {
+          created_at?: string;
+          establishment_id?: string;
+          expires_at?: string;
+          id?: string;
+          last_seen_at?: string;
+          table_id?: string;
+          token_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "guest_sessions_establishment_id_fkey";
+            columns: ["establishment_id"];
+            isOneToOne: false;
+            referencedRelation: "establishments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "guest_sessions_table_id_fkey";
+            columns: ["table_id"];
+            isOneToOne: false;
+            referencedRelation: "dining_tables";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       invoices: {
         Row: {
@@ -1096,8 +1185,21 @@ export type Database = {
         };
         Returns: Json;
       };
+      ensure_guest_session: {
+        Args: {
+          p_establishment_id: string;
+          p_expires_at: string;
+          p_table_id: string;
+          p_token_hash: string;
+        };
+        Returns: Json;
+      };
       evaluate_establishment_access: {
         Args: { p_establishment_id: string };
+        Returns: Json;
+      };
+      get_public_menu: {
+        Args: { p_establishment_slug: string; p_table_token: string };
         Returns: Json;
       };
       has_tenant_role: {

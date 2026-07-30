@@ -152,4 +152,8 @@ Ver `references/ENV_EXAMPLE.md` e `.env.example` para a lista completa e regras 
 
 ### Contas de demonstração
 
-Ainda não existem — serão criadas junto com o seed na Fase 3+ (`docs/14_SEED_E_DEMONSTRACAO.md`). Nenhuma credencial real deve ser versionada; instruções de criação local serão documentadas aqui quando o script de seed existir.
+O script de seed formal (`docs/14_SEED_E_DEMONSTRACAO.md`) ainda não foi implementado. Para permitir testar o fluxo real durante o desenvolvimento (Fases 1–4), foi criado sob autorização explícita um estabelecimento e um usuário de demonstração diretamente no projeto Supabase de desenvolvimento (`imenu-dev`) — não versionado, não é seed, e será removido/desativado antes de produção (checklist `docs/10 §10`). Detalhes e credenciais não ficam no repositório; ver `status/DECISION_LOG.md` (D-016) e pedir ao responsável do projeto.
+
+### Estado da implementação
+
+Fases 0 a 4 do plano (`docs/12_PLANO_DE_IMPLEMENTACAO.md`) concluídas: fundação do repositório, identidade/tenancy/RLS, assinatura e gate de acesso, catálogo e mídias, mesas/QR e cardápio público (sem envio real de pedido ainda — ver Fase 5). Detalhes completos, migrações aplicadas e pendências em `status/IMPLEMENTATION_STATUS.md`.

@@ -21,11 +21,11 @@ export default async function PainelPage() {
       <div>
         <h1 className="text-lg font-semibold text-neutral-950">Painel de {establishment.tradeName}</h1>
         <p className="text-sm text-neutral-600">
-          Acesso confirmado como {MEMBER_ROLE_LABELS[establishment.role]}. Pedidos, mesas e equipe serão adicionados
-          nas próximas fases do MVP.
+          Acesso confirmado como {MEMBER_ROLE_LABELS[establishment.role]}. Pedidos e equipe serão adicionados nas
+          próximas fases do MVP.
         </p>
       </div>
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Link
           href="/painel/cardapio/produtos"
           className="rounded-control bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700"
@@ -37,6 +37,12 @@ export default async function PainelPage() {
           className="rounded-control border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:border-primary-600"
         >
           Cardápio: categorias
+        </Link>
+        <Link
+          href="/painel/mesas"
+          className="rounded-control border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:border-primary-600"
+        >
+          Mesas e QR Codes
         </Link>
       </div>
     </div>
