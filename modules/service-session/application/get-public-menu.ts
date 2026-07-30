@@ -23,6 +23,8 @@ export async function getPublicMenu(establishmentSlug: string, tableToken: strin
     windowSeconds: 60,
   });
   if (!rateLimit.allowed) {
+    // eslint-disable-next-line no-console
+    console.error("[getPublicMenu] bloqueado por rate limit", { establishmentSlug, tableToken });
     return { valid: false };
   }
 
@@ -34,11 +36,20 @@ export async function getPublicMenu(establishmentSlug: string, tableToken: strin
   });
 
   if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[getPublicMenu] erro do Supabase", { establishmentSlug, tableToken, error });
     return { valid: false };
   }
 
   const parsed = publicMenuSchema.safeParse(data);
   if (!parsed.success) {
+    // eslint-disable-next-line no-console
+    console.error("[getPublicMenu] falha de validação do schema", {
+      establishmentSlug,
+      tableToken,
+      data,
+      issues: parsed.error.issues,
+    });
     return { valid: false };
   }
 

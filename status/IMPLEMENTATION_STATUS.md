@@ -297,3 +297,28 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 
 A pedido do responsável, criado um segundo estabelecimento fictício completo em `imenu-dev` só para visualização (categorias, 10 produtos publicados com foto placeholder, grupo de opções de tamanho na pizza, mesa com QR real, dono próprio). Ver `status/DECISION_LOG.md` D-024 para detalhes e para a lição sobre login real de usuário inserido manualmente (`auth.identities` + colunas de token vazias em vez de `NULL`). Mesmo regime de D-016: não é seed formal, remover/desativar antes de produção.
 
+## Primeiro deploy na Vercel (30/07/2026) e bug em aberto — pausado aqui
+
+**Estado do repositório:** `origin/main` está em `0ea188b` (inclui Fase 5 completa — commitada pelo próprio responsável em `78d97cb` fora desta sessão —, o fix de build `266aca8`/D-025 e o registro D-024/D-026). Working tree local tem **1 alteração não commitada**: `modules/service-session/application/get-public-menu.ts` ganhou 3 `console.error` de diagnóstico temporário (nos três pontos que retornam `{valid:false}`) — **não commitados, não enviados, não removidos ainda**.
+
+**Deploy:** conectado GitHub → Vercel, domínio estável `https://imenu-nu.vercel.app` (env vars configuradas: Supabase URL/anon key, peppers, CRON_SECRET, RATE_LIMIT_PROVIDER=memory). Login funcionando (`owner-cantina@imenu.demo` / `CantinaDemo123!`, e `superadmin@imenu.demo` / `SuperAdminDemo123!` — ver D-026).
+
+### Bug em aberto: cardápio público sempre mostra "QR Code inválido" no deploy da Vercel
+
+**Sintoma:** `https://imenu-nu.vercel.app/m/{slug}/t/{token}` sempre renderiza o estado de QR inválido, para **qualquer** estabelecimento/mesa testado (Cantina da Nonna **e** Restaurante Demo iMenu/Mesa 7) — não é specific de um dado.
+
+**Já descartado (confirmado durante a investigação):**
+- Dado no banco: `select` direto confirma a mesa/token existem, `is_active=true`, estabelecimento ativo.
+- A própria função `get_public_menu(slug, token)` chamada via SQL (`set role anon`) retorna o cardápio completo perfeitamente (testado para Cantina da Nonna com sucesso).
+- Domínio/URL errado, cache de deploy antigo (`DEPLOYMENT_NOT_FOUND`) — era um problema real e separado, já resolvido (era `NEXT_PUBLIC_APP_URL` apontando para uma URL de deploy específico em vez do domínio estável do projeto).
+- Cliente Supabase mal configurado — descartado porque `/entrar` (login) e `/painel/*` (dashboard, mesas, regenerar token) funcionam perfeitamente no mesmo deploy, usando o mesmo `createSupabaseServerClient()`.
+
+**Evidência mais importante encontrada:** nos logs da API do Supabase (`get_logs`, service `api`), aparecem normalmente as chamadas de `/painel/*` (`auth/v1/user`, `rest/v1/establishment_members`, `rest/v1/rpc/evaluate_establishment_access`, etc.) — mas **nunca** aparece nenhuma chamada a `rest/v1/rpc/get_public_menu`, mesmo logo depois de testar a URL pública repetidas vezes. Ou seja: a chamada RPC do cardápio público parece **nunca sair do servidor** — a função `getPublicMenu()` (`modules/service-session/application/get-public-menu.ts`) está retornando `{valid:false}` antes de chegar em `supabase.rpc(...)`.
+
+**Suspeita principal (não confirmada ainda):** o `checkRateLimit()` (`lib/rate-limit/`, adicionado na Fase 5 especificamente para essa função) pode estar retornando `allowed:false` sempre no ambiente serverless da Vercel — só essa chamada teria esse comportamento diferente de `/entrar`/`/painel`, que não passam pelo rate limiter. Ainda não confirmado por log real do lado da aplicação (só tenho acesso aos logs do Supabase via MCP, não aos logs de runtime/função da própria Vercel).
+
+**Próximo passo ao retomar:**
+1. Decidir se comita o diagnóstico (`console.error` já escrito) e pede para o responsável reproduzir o erro e colar o conteúdo da aba **"Logs"/"Runtime Logs"** do projeto na Vercel (isso vai mostrar exatamente qual dos 3 `console.error` disparou e por quê).
+2. Com a causa confirmada, corrigir de verdade e **remover os `console.error` de diagnóstico**.
+3. Reconfirmar com o teste de navegador (Playwright) e com o teste manual do responsável no celular.
+
