@@ -293,3 +293,7 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
   - `create_public_order` recebe só `tableToken` (não `establishmentSlug`) — ver D-020. O parâmetro `p_expected_total_cents`/`p_items` têm default no Postgres para poderem ser omitidos pelo cliente Supabase-js quando ausentes (evita ter que enviar `null` explicitamente).
   - Dado de demonstração desta fase: o pedido `A001` criado durante a verificação em navegador (Suco de Laranja, Mesa 7) ficou persistido em `imenu-dev` no status `accepted` — mesmo regime de D-016, não é seed formal.
 
+## Dado de demonstração adicional (30/07/2026, fora das fases) — "Cantina da Nonna"
+
+A pedido do responsável, criado um segundo estabelecimento fictício completo em `imenu-dev` só para visualização (categorias, 10 produtos publicados com foto placeholder, grupo de opções de tamanho na pizza, mesa com QR real, dono próprio). Ver `status/DECISION_LOG.md` D-024 para detalhes e para a lição sobre login real de usuário inserido manualmente (`auth.identities` + colunas de token vazias em vez de `NULL`). Mesmo regime de D-016: não é seed formal, remover/desativar antes de produção.
+
