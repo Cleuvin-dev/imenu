@@ -1,8 +1,4 @@
-/**
- * Carrinho local (client-side apenas). A Fase 5 cria o pedido de verdade no
- * servidor; até lá isto é só um resumo informativo para o consumidor
- * (docs/12 Fase 4: "detalhe do produto e carrinho local").
- */
+/** Carrinho local (client-side apenas); o pedido real é criado no servidor via POST /api/public/orders. */
 export type CartItem = {
   id: string;
   productId: string;
@@ -10,6 +6,7 @@ export type CartItem = {
   name: string;
   unitPriceCents: number;
   quantity: number;
+  optionIds: string[];
   optionNames: string[];
   notes?: string;
 };
@@ -54,4 +51,31 @@ export function cartItemCount(cart: Cart): number {
 
 export function cartSubtotalCents(cart: Cart): number {
   return cart.items.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
+}
+
+export function clearCart(establishmentSlug: string, tableToken: string): void {
+  writeCart(establishmentSlug, tableToken, EMPTY_CART);
+}
+
+function clientRequestIdStorageKey(establishmentSlug: string, tableToken: string): string {
+  return `imenu-cart-request-id:${establishmentSlug}:${tableToken}`;
+}
+
+/**
+ * Um clientRequestId por carrinho, reaproveitado entre tentativas de envio
+ * (retry/duplo clique) para que o servidor trate como a mesma operação
+ * idempotente (AC-ORD-005). É descartado após o pedido ser criado com
+ * sucesso — o próximo carrinho gera um novo.
+ */
+export function getOrCreateClientRequestId(establishmentSlug: string, tableToken: string): string {
+  const key = clientRequestIdStorageKey(establishmentSlug, tableToken);
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  window.localStorage.setItem(key, id);
+  return id;
+}
+
+export function clearClientRequestId(establishmentSlug: string, tableToken: string): void {
+  window.localStorage.removeItem(clientRequestIdStorageKey(establishmentSlug, tableToken));
 }

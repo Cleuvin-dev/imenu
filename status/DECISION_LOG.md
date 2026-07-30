@@ -148,6 +148,51 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** nenhum dado exposto; o bug só impedia a página de carregar em desenvolvimento. Regra prática: exigir uma variável de ambiente apenas no ponto de uso real, nunca no carregamento global do schema, quando a variável não é necessária para o funcionamento básico do app.
 - **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
 
+## D-019 — Token de rastreamento do pedido: HMAC determinístico do `clientRequestId`, não hash de valor aleatório
+
+- **Data:** 30/07/2026
+- **Contexto:** `orders.public_tracking_token_hash` (docs/07 §6) precisa, ao mesmo tempo, (1) nunca guardar um segredo utilizável em texto puro, e (2) devolver exatamente o mesmo `trackingToken` numa repetição idempotente da mesma `clientRequestId` (AC-ORD-005) — sem uma segunda ida ao banco para "lembrar" o valor original. Gerar um token aleatório dentro do banco (como `dining_tables.public_token`) e devolvê-lo cru resolveria (1), mas quebraria (2): na repetição, só teríamos o hash salvo, não o valor original para devolver ao cliente.
+- **Decisão:** o token de rastreamento é `HMAC-SHA256(ORDER_TRACKING_TOKEN_PEPPER, clientRequestId)`, calculado em Node (`modules/ordering/domain/tracking-token.ts`) e passado pronto para `create_public_order`, que só grava e compara — nunca calcula. Por ser determinístico a partir de um `clientRequestId` que o próprio cliente já gerou, um retry recalcula exatamente o mesmo token de forma independente, sem precisar reler nada do banco; por depender de uma pimenta que só o servidor conhece, ninguém consegue derivar o token a partir do `clientRequestId` sozinho.
+- **Alternativas consideradas:** gerar o token aleatório dentro de `create_public_order` (como o QR da mesa) e devolvê-lo cru, hash simples guardado — rejeitada porque quebra o retry idempotente (o valor original não seria recuperável na segunda chamada) sem adicionar uma tabela de cache de resposta só para isso.
+- **Impacto:** nenhum — a pimenta (`ORDER_TRACKING_TOKEN_PEPPER`) já existia no schema de ambiente desde antes desta fase, antecipando exatamente este uso.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-020 — `create_public_order` recebe só `tableToken`, sem `establishmentSlug`
+
+- **Data:** 30/07/2026
+- **Contexto:** a primeira versão da função foi escrita espelhando `get_public_menu(slug, token)`, mas o contrato público documentado (`docs/08 §2`, `POST /api/public/orders`) só lista `tableToken` no corpo da requisição — sem `establishmentSlug`. Como `dining_tables.public_token` já é único globalmente (`unique` na tabela, Fase 4), o estabelecimento é sempre derivável só a partir do token.
+- **Decisão:** removido o parâmetro `p_establishment_slug` (`supabase/migrations/20260730100007_create_public_order_drop_slug_param.sql`, corretiva sobre a migração original, sem editá-la). O serviço Node (`modules/ordering/application/create-public-order.ts`) também não recebe mais o slug.
+- **Alternativas consideradas:** manter os dois parâmetros por "defesa extra" — rejeitada por divergir do contrato documentado sem necessidade real (o token sozinho já garante o isolamento de tenant corretamente).
+- **Impacto:** nenhum — pego antes de qualquer uso real, ainda durante a implementação.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-021 — Sem tabela genérica `idempotency_records` nesta fase
+
+- **Data:** 30/07/2026
+- **Contexto:** `docs/07 §8` lista `idempotency_records` como tabela de suporte geral. Nesta fase, porém, o único consumidor de idempotência é a criação de pedido, que já tem seu próprio mecanismo suficiente: `orders` tem `unique (establishment_id, client_request_id)` mais a coluna `payload_hash` comparada explicitamente dentro de `create_public_order` — o próprio pedido já criado é a "resposta cacheada" a devolver numa repetição.
+- **Decisão:** não criar `idempotency_records` agora. Revisar quando `bill_requests` (Fase 7) precisar de idempotência — mas mesmo ali `docs/07 §6` já prevê um índice único parcial próprio ("solicitação ativa por sessão"), o que pode tornar a tabela genérica desnecessária também naquele caso.
+- **Alternativas consideradas:** criar a tabela genérica agora, sem uso real — rejeitada por CLAUDE.md ("não implementar itens fora do MVP sem necessidade real") e pelo princípio de não introduzir abstração antes de haver um segundo consumidor.
+- **Impacto:** nenhum no MVP atual; caso surja um segundo consumidor de idempotência com necessidades distintas das já cobertas por constraints/índices específicos, este registro serve de lembrete para reavaliar.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-022 — Rate limit implementado na Fase 5, aplicado também retroativamente ao cardápio público da Fase 4
+
+- **Data:** 30/07/2026
+- **Contexto:** CLAUDE.md é explícito e não-negociável: "Endpoints públicos devem validar QR/mesa, disponibilidade, assinatura, horário, payload, idempotência **e limite de requisições**". A Fase 4 implementou todas as outras validações de `get_public_menu`, mas não limite de requisições — lacuna que ficou registrada implicitamente (nenhuma menção em `status/IMPLEMENTATION_STATUS.md` da Fase 4), já que `lib/rate-limit/` era só um diretório vazio até agora. O schema de ambiente já antecipava isso (`RATE_LIMIT_PROVIDER`, `UPSTASH_REDIS_REST_URL/TOKEN`, `IP_HASH_PEPPER` já existiam antes desta sessão).
+- **Decisão:** implementar `lib/rate-limit/` (backend `memory` para dev local de instância única; backend `upstash` via chamadas REST simples, sem adicionar `@upstash/redis` como dependência) e aplicar em **dois** lugares: `POST /api/public/orders` (10 requisições/5min por sessão anônima+mesa, o alvo principal desta fase) e, como correção pontual de baixo custo enquanto a infraestrutura já estava sendo construída, também em `getPublicMenu` (60/min por hash de IP+token), fechando a lacuna documentada de CLAUDE.md que a Fase 4 tinha deixado.
+- **Alternativas consideradas:** aplicar rate limit só em `/api/public/orders` e registrar a lacuna do cardápio como bloqueio pendente para uma fase futura — rejeitada porque a correção era pequena (uma função já teria toda a infraestrutura pronta) e a regra do CLAUDE.md é textualmente inequívoca sobre "endpoints públicos" no plural, não só o de pedidos.
+- **Impacto:** baixo risco — mudança aditiva, sem alterar contrato de resposta (limite excedido em `getPublicMenu` devolve `{valid:false}`, mesmo formato de qualquer outra falha silenciosa já documentada para AC-PUB-002).
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-023 — Verificação em navegador do lado do consumidor completa; lado do painel de pedidos verificado só via SQL/RPC direto
+
+- **Data:** 30/07/2026
+- **Contexto:** a verificação em navegador desta fase cobriu de ponta a ponta o fluxo do consumidor contra o servidor de dev real + `imenu-dev` real (QR → produto → carrinho → **enviar pedido de verdade** → página de acompanhamento pública, incluindo token de rastreamento inválido e QR inválido) — zero erros de console. Para o lado do painel (`/painel/pedidos`, aceitar/rejeitar/etc.), não há como autenticar como `admin@imenu.local` neste ambiente: a senha da conta demo não está registrada em lugar nenhum (corretamente, por não dever estar) e `SUPABASE_SERVICE_ROLE_KEY` continua vazia (bloqueio já documentado desde a Fase 0/1), o que impede gerar uma sessão de teste programaticamente.
+- **Decisão:** validar a lógica de transição de status (papel, motivo obrigatório, idempotência por `operation_id`, transição inválida) integralmente via `supabase/tests/0005_orders_transactional.sql` (script com rollback, sem persistir dados) — cobre exatamente a mesma função (`transition_order_status`) que as páginas do painel chamam. Adicionalmente, para fechar o laço real, o pedido criado pelo teste de navegador do consumidor foi transicionado para `accepted` via `execute_sql` autenticado como o owner de fato da conta demo (mesmo RPC que o botão do painel chama), e a página pública de acompanhamento confirmou refletir o novo status — evidência de que o caminho ponta a ponta funciona, mesmo sem clicar fisicamente nos botões do painel num navegador autenticado.
+- **Alternativas consideradas:** pedir a senha da conta demo ao responsável para poder logar via Playwright — não foi necessário pedir agora porque a cobertura por RPC direto (mesmo código que os botões chamam) mais o teste do lado público já validam a lógica de ponta a ponta; renderização pura das páginas do painel (sem interação) foi confirmada indiretamente pelo build bem-sucedido e pelo redirecionamento correto (307) para `/entrar` quando não autenticado.
+- **Impacto:** nenhuma lacuna de segurança ou lógica de negócio — só uma lacuna de "clique físico no botão dentro de um navegador autenticado", que é a forma mais fraca de evidência mesmo quando possível. Registrado para transparência, conforme exigido pelo CLAUDE.md ("não oculte a falha").
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
 ## Modelo de nova entrada
 
 ```md

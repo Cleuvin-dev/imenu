@@ -1,6 +1,6 @@
 # Status de implementação — iMenu MVP
 
-**Atualizado em:** 29/07/2026 (Fase 4 concluída)  
+**Atualizado em:** 30/07/2026 (Fase 5 concluída)  
 **Estado inicial:** documentação concluída; implementação ainda não iniciada.
 
 ## Como atualizar
@@ -185,6 +185,46 @@ Fluxo completo testado via Playwright headless contra o servidor de dev real: (1
 
 Mesa "Mesa 7" (`public_token` real gerado pelo banco) criada via fluxo real do painel, para permitir testar o cardápio público de ponta a ponta. Mesmo regime de D-016: não é seed formal, deve ser removida/desativada antes de produção (docs/10 §10).
 
+## Fase 5 concluída (30/07/2026) — Pedido transacional
+
+### Migrações (`supabase/migrations/`)
+
+- `20260730100000_table_service_sessions.sql`: enum `table_session_status`; tabela `table_service_sessions` (uma sessão `open` por mesa via índice único parcial). RLS ativa/forçada: leitura para qualquer membro ativo do tenant ou platform admin; sem policy de escrita — só é criada dentro de `create_public_order`.
+- `20260730100001_orders_tables.sql`: enum `order_status`; tabelas `orders`, `order_items`, `order_item_options`, `order_status_history` (docs/07 §6). RLS ativa/forçada nas 4: leitura para qualquer membro ativo (docs/02 §3 — "Pedidos" é ao menos "L" para todos os papéis) ou platform admin; nenhuma policy de insert/update/delete — toda escrita passa pelas funções abaixo.
+- `20260730100002_create_public_order.sql` + `20260730100007_create_public_order_drop_slug_param.sql` (corretiva: remove parâmetro `establishmentSlug` para casar exatamente com o contrato público de `docs/08`, já que `public_token` é único globalmente) + `20260730100008_create_public_order_optional_params.sql` (corretiva: `expectedTotalCents`/`items` ganham default para poderem ser omitidos na chamada RPC): função `create_public_order` — transacional, `SECURITY DEFINER`, valida mesa/estabelecimento, assinatura, horário/pausa manual, idempotência (`client_request_id` + `payload_hash`), recalcula o preço a partir do catálogo atual (nunca confia no total do cliente), valida disponibilidade de produto/opção e regras de grupo (min/max), abre ou reaproveita a sessão de atendimento da mesa, numera o pedido (`A001`, `A002`...) serializado por trava consultiva por estabelecimento/dia, e grava pedido + itens + opções + primeiro histórico numa única transação.
+- `20260730100003_transition_order_status.sql`: função `transition_order_status` — valida a transição e o papel do ator internamente conforme a matriz de docs/05 §3 (nunca só no app), exige motivo em rejeitar/cancelar, é idempotente por `operation_id` (repetir a mesma operação devolve o estado atual sem duplicar histórico).
+- `20260730100004_get_public_order.sql`: função `get_public_order` — leitura pública fail-closed do acompanhamento do pedido pelo token de rastreamento (nunca revela se o pedido existe quando o token é inválido).
+- `20260730100005_orders_indexes.sql` + `20260730100006_orders_establishment_id_fk_indexes.sql`: índices de cobertura (docs/07 §12) e das FKs sinalizadas pelo advisor de performance.
+
+Todas aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` (security) revalidado: nenhum aviso novo além dos já aceitos nas Fases 1–4 (funções novas aparecem como "executável por anon/authenticated" exatamente como esperado — `create_public_order`/`get_public_order` só por `anon`, `transition_order_status` só por `authenticated`). Confirmado também por consulta direta a `has_function_privilege` (não só pelo advisor, lição de D-015/D-017) — os três privilégios vieram exatamente como esperado já na primeira tentativa desta vez.
+
+### Decisões registradas nesta fase
+
+Ver `status/DECISION_LOG.md`: D-019 (token de rastreamento via HMAC determinístico do `clientRequestId`, não hash de valor aleatório — permite idempotência sem reler o banco), D-020 (`create_public_order` recebe só `tableToken`, sem `establishmentSlug`, casando com o contrato documentado), D-021 (sem tabela genérica `idempotency_records` nesta fase — `orders` já tem seu próprio mecanismo suficiente), D-022 (rate limit implementado e aplicado também retroativamente ao cardápio público da Fase 4, fechando uma lacuna do CLAUDE.md), D-023 (verificação em navegador do painel de pedidos limitada por falta de credencial da conta demo).
+
+### Aplicação (Next.js)
+
+- `lib/rate-limit/`: `memory.ts` (backend puro, testável por unidade, usado por padrão em dev) e `index.ts` (`server-only`; escolhe `memory` ou `upstash` via `RATE_LIMIT_PROVIDER`; backend Upstash via chamadas REST simples, sem adicionar `@upstash/redis` como dependência) e `hash-ip.ts` (HMAC do IP com `IP_HASH_PEPPER`, nunca loga/chaveia por IP em texto puro).
+- `modules/ordering/`: schemas Zod (`create-order.schema.ts`, `public-order-status.schema.ts`); domínio (`order-status-labels.ts`, `transitions.ts` — espelha a matriz de docs/05 §3 só para orientar a UI, `payload-hash.ts` — hash determinístico e testável por unidade dos itens do pedido, `tracking-token.ts` — HMAC do `clientRequestId`); aplicação (`create-public-order.ts`, `get-public-order.ts` para o consumidor; `list-orders.ts`, `get-order.ts`, `transition-order.ts` para o painel).
+- `app/api/public/orders/route.ts` (`POST`) e `app/api/public/orders/[trackingToken]/route.ts` (`GET`): endpoints públicos com rate limit, mapeamento de erros do Postgres para códigos estáveis (`docs/08 §5`), geração/verificação do token de rastreamento.
+- `modules/service-session/domain/cart.ts`: ganhou `optionIds` no item do carrinho (antes só guardava os nomes para exibição — faltava o identificador real para poder montar o payload do pedido), `getOrCreateClientRequestId`/`clearClientRequestId` (idempotência sobrevive a reload/duplo clique) e `clearCart`.
+- `app/(public)/m/[establishmentSlug]/t/[tableToken]/carrinho/cart-client.tsx`: botão "Enviar pedido" habilitado de verdade — chama a API, trata erros (`PRICE_CHANGED`, `PRODUCT_UNAVAILABLE`, `ORDERS_CLOSED`, etc.) com mensagem inline, limpa o carrinho e redireciona para `/pedido/[trackingToken]` no sucesso.
+- `app/(public)/pedido/[trackingToken]/`: página pública de acompanhamento — status atual, motivo de rejeição/cancelamento quando houver, itens com opções, total, linha do tempo; um componente cliente faz poll a cada 8s via `GET /api/public/orders/{trackingToken}` até o pedido chegar a um estado terminal (entregue/rejeitado/cancelado). Token inválido mostra "Pedido não encontrado" sem revelar detalhes.
+- `app/(establishment)/painel/pedidos/`: lista (últimos 50, mais recentes primeiro) e detalhe (itens, opções, histórico, formulários de transição — só mostra os botões permitidos para o papel do usuário atual, com campo de motivo obrigatório quando a transição exige). Link adicionado no dashboard do painel.
+
+### Testes AC-ORD-002 a 008
+
+- `supabase/tests/0005_orders_transactional.sql`: mesmo formato dos testes anteriores (fixtures + asserções + `rollback` final, nunca persiste dados). Cobre: servidor recalcula o total e rejeita quando o cliente informa um valor divergente (AC-ORD-002/003); retry idempotente com a mesma `client_request_id` devolve o mesmo pedido sem duplicar (AC-ORD-005); mesma `client_request_id` com payload diferente é rejeitada (AC-ORD-006); produto esgotado não cria pedido parcial nem completo (AC-ORD-004); seleção de opções abaixo do mínimo é rejeitada; transição `pending → ready` direta é rejeitada (AC-ORD-007); transição válida grava histórico e repetir a mesma `operation_id` não duplica (AC-ORD-008); motivo obrigatório em rejeitar é validado e persistido; papel insuficiente (`menu_editor`) é barrado; isolamento de tenant aplicado a pedidos (owner de outro estabelecimento não lê nada).
+- **Executado com sucesso via MCP contra `imenu-dev` em 30/07/2026** — todas as asserções passaram, nenhuma linha persistida.
+- **Armadilha encontrada e corrigida durante a escrita do teste:** as primeiras verificações de contagem (`select count(*) from public.orders ...`) rodavam como `anon`, que não tem nenhuma policy de `SELECT` em `orders` — o resultado vinha sempre `0`, mascarando o teste (passava mesmo quando não deveria). Corrigido alternando para `service_role` só nas checagens de contagem, mantendo `anon` para as chamadas de `create_public_order` em si (que é o papel real do consumidor).
+- `tests/unit/ordering-domain.test.ts`: 14 testes cobrindo hash de payload determinístico e sensível a mudanças reais (ignora ordem de itens/opções, muda com quantidade/opção/mesa diferentes), matriz de transições (cobertura de todos os status, estados terminais sem saída, papel insuficiente, motivo obrigatório só em rejeitar/cancelar) e o backend em memória do rate limit (permite dentro do limite, bloqueia acima, libera após a janela).
+
+### Verificação manual em navegador
+
+Fluxo completo do consumidor testado via Playwright headless contra o servidor de dev real + projeto `imenu-dev` real (não simulado): QR da Mesa 7 → cardápio mostra "Suco de Laranja" → abrir produto → "Adicionar" → `/carrinho` mostra o item → "Enviar pedido" → redirecionamento real para `/pedido/{trackingToken}` mostrando "Aguardando confirmação", o item e o total corretos. Token de rastreamento inválido mostra "Pedido não encontrado"; QR inválido mostra "QR Code inválido". Zero erros de console/página em todas as etapas. O pedido criado (`A001`, R$ 12,00) foi conferido diretamente no banco e depois transicionado para `accepted` via `transition_order_status` autenticado como o owner de fato da conta demo (mesmo RPC que os botões do painel chamam) — a página pública de acompanhamento (`GET /api/public/orders/{trackingToken}`) confirmou refletir `"status":"accepted"` e a linha do tempo com as duas entradas.
+
+**Lacuna registrada (D-023):** não foi possível clicar fisicamente nos botões de `/painel/pedidos` num navegador autenticado como `admin@imenu.local` — a senha da conta demo não está registrada em lugar nenhum (corretamente) e `SUPABASE_SERVICE_ROLE_KEY` continua vazia (bloqueio já conhecido), impedindo gerar uma sessão de teste programaticamente. A lógica exata que esses botões chamam (`transition_order_status`) foi validada de forma equivalente via SQL/RPC direto; as páginas do painel foram confirmadas por build bem-sucedido e redirecionamento correto (307) para `/entrar` quando não autenticado.
+
 ## Fases
 
 | Fase | Estado | Evidência/observação |
@@ -194,8 +234,8 @@ Mesa "Mesa 7" (`public_token` real gerado pelo banco) criada via fluxo real do p
 | 2 — Assinatura e gate | Concluída (29/07/2026) | 5 migrações aplicadas em `imenu-dev` via MCP; AC-SUB-001 a AC-SUB-004 testados via script SQL (rollback completo); job de cron autenticado por segredo; gate aplicado no painel do estabelecimento; superadmin mínimo de estabelecimentos/faturas; `npm run lint`, `npm run typecheck`, `npm test` (13/13) e `npm run build` passam. Ver seção "Fase 2 concluída" acima. |
 | 3 — Catálogo e mídias | Concluída (29/07/2026) | 6 migrações aplicadas em `imenu-dev` via MCP (tabelas, RLS, funções, storage, índices); AC-CAT-001 testado via script SQL; upload validado por magic bytes (13 testes unitários); categorias/produtos/opções/mídia funcionando de ponta a ponta, testado em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 3 concluída" acima. |
 | 4 — Mesas, QR e público | Concluída (29/07/2026) | 7 migrações aplicadas em `imenu-dev` via MCP (mesas, sessão anônima, RPCs de cardápio público, horário de funcionamento); AC-PUB-001, AC-PUB-002 e AC-QR-001 testados via script SQL (rollback completo); QR PNG/SVG por mesa com regeneração de token; cardápio público mobile + carrinho local testados de ponta a ponta em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 4 concluída" acima. |
-| 5 — Pedido transacional | Não iniciada | Próxima fase. |
-| 6 — Operação em tempo real | Não iniciada | — |
+| 5 — Pedido transacional | Concluída (30/07/2026) | 9 migrações aplicadas em `imenu-dev` via MCP (sessão de mesa, pedidos/itens/opções/histórico, `create_public_order`, `transition_order_status`, `get_public_order`, índices); AC-ORD-002 a 008 testados via script SQL (rollback completo); carrinho público conectado de ponta a ponta (testado em navegador real contra o servidor de dev + Supabase real, pedido de verdade criado e transicionado); painel de pedidos com transições por papel; `npm run lint`, `npm run typecheck`, `npm test` (40/40) e `npm run build` passam. Ver seção "Fase 5 concluída" acima. |
+| 6 — Operação em tempo real | Não iniciada | Próxima fase. |
 | 7 — Conta e sessão da mesa | Não iniciada | — |
 | 8 — Administração completa | Não iniciada | — |
 | 9 — Robustez e deploy | Não iniciada | — |
@@ -206,13 +246,13 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 
 | Verificação | Último resultado | Data |
 |---|---|---|
-| Lint | Passou (`npm run lint`) | 29/07/2026 |
-| Typecheck | Passou (`npm run typecheck`) | 29/07/2026 |
-| Unitários | Passou — 26/26 (`npm test`) | 29/07/2026 |
-| Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql`, `0003_catalog_gate.sql` e `0004_public_menu_gate.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 29/07/2026 |
-| E2E P0 | `npm run test:e2e` roda mas não encontra nenhum arquivo `*.spec.ts` — Playwright configurado (`playwright.config.ts`) porém nenhum teste E2E formal foi escrito ainda; verificação end-to-end até aqui foi feita via scripts Playwright ad-hoc descartáveis (ver "Verificação manual em navegador" de cada fase) | 29/07/2026 |
-| Build | Passou (`npm run build`) | 29/07/2026 |
-| Segurança (AC-SEC-001) | Passou — `SUPABASE_SERVICE_ROLE_KEY`/`CRON_SECRET` (nome e valor) ausentes de `.next/static` | 29/07/2026 |
+| Lint | Passou (`npm run lint`) | 30/07/2026 |
+| Typecheck | Passou (`npm run typecheck`) | 30/07/2026 |
+| Unitários | Passou — 40/40 (`npm test`) | 30/07/2026 |
+| Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql`, `0003_catalog_gate.sql`, `0004_public_menu_gate.sql` e `0005_orders_transactional.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 30/07/2026 |
+| E2E P0 | `npm run test:e2e` roda mas não encontra nenhum arquivo `*.spec.ts` — Playwright configurado (`playwright.config.ts`) porém nenhum teste E2E formal foi escrito ainda; verificação end-to-end até aqui foi feita via scripts Playwright ad-hoc descartáveis (ver "Verificação manual em navegador" de cada fase) | 30/07/2026 |
+| Build | Passou (`npm run build`) | 30/07/2026 |
+| Segurança (AC-SEC-001) | Passou — `SUPABASE_SERVICE_ROLE_KEY`/`CRON_SECRET`/`ORDER_TRACKING_TOKEN_PEPPER`/`IP_HASH_PEPPER` (nome e valor) ausentes de `.next/static` | 30/07/2026 |
 | Acessibilidade | Não executado | — |
 | Staging smoke test | Não executado | — |
 
@@ -227,27 +267,29 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 | Definir valores comerciais dos planos | Dono do produto | Seed/configuração produção (hoje só existe plano de teste, criado e revertido dentro do script de teste) | Pendente |
 | Definir e-mail transacional | Dono do produto | Envio automático de convite | Opcional no MVP |
 | Habilitar "Leaked Password Protection" no Supabase Auth | Dono do produto | Segurança de contas antes de produção (checklist docs/10 §10) | Pendente — ajuste de configuração no painel do projeto, fora do escopo de migração |
+| Senha da conta demo `admin@imenu.local` desconhecida nesta sessão | — | Impediu login via navegador para clicar fisicamente nos botões de `/painel/pedidos` (Fase 5); a lógica foi validada por RPC direto (D-023) | Informativo — não bloqueia entrega, só limita a forma de evidência de UI |
 
 ## Última entrega
 
-- Fase 4 concluída: mesas, QR e cardápio público (ver seção "Fase 4 concluída" acima para a lista completa de migrações e arquivos).
-- Arquivos principais: `supabase/migrations/20260729190016..190022_*.sql`, `supabase/tests/0004_public_menu_gate.sql`, `modules/tables/`, `modules/service-session/`, `modules/media/domain/public-url.ts`, `app/(establishment)/painel/mesas/`, `app/(public)/m/[establishmentSlug]/t/[tableToken]/`, `app/api/establishments/mesas/[tableId]/qr/route.ts`, `proxy.ts` (cookie de sessão anônima), `lib/env/index.ts` e `lib/supabase/admin.ts` (correção D-018).
-- Verificado em 29/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam (reconfirmado **depois** da correção do bug de `getServerEnv()`, D-018). `npm run test:e2e` roda sem erro mas não encontra nenhum arquivo de teste (bloqueio já conhecido — nenhum `*.spec.ts` escrito ainda). Testes AC-PUB-001, AC-PUB-002 e AC-QR-001 executados via MCP contra `imenu-dev` com sucesso. Fluxo completo (criar mesa → baixar QR → abrir cardápio público → detalhe do produto → adicionar ao carrinho → revisar carrinho) testado em navegador real via Playwright, sem erros de console.
-- Commit da Fase 4 (`d078905`) publicado em `origin/main` nesta sessão (push autorizado pelo responsável). `origin/main` está em dia com o working tree — nenhum commit pendente de push.
+- Fase 5 concluída: pedido transacional (ver seção "Fase 5 concluída" acima para a lista completa de migrações e arquivos).
+- Arquivos principais: `supabase/migrations/20260730100000..100008_*.sql`, `supabase/tests/0005_orders_transactional.sql`, `tests/unit/ordering-domain.test.ts`, `lib/rate-limit/`, `modules/ordering/`, `app/api/public/orders/`, `app/(public)/pedido/[trackingToken]/`, `app/(public)/m/[establishmentSlug]/t/[tableToken]/carrinho/cart-client.tsx`, `modules/service-session/domain/cart.ts`, `app/(establishment)/painel/pedidos/`.
+- Verificado em 30/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (40/40) e `npm run build` passam. `npm run test:e2e` roda sem erro mas não encontra nenhum arquivo de teste (bloqueio já conhecido). Testes AC-ORD-002 a 008 executados via MCP contra `imenu-dev` com sucesso (rollback completo). Fluxo completo do consumidor (QR → produto → carrinho → **enviar pedido de verdade** → acompanhamento público, token/QR inválidos) testado em navegador real via Playwright contra o servidor de dev + `imenu-dev` reais, sem erros de console; o pedido criado foi conferido no banco e depois transicionado para `accepted` via RPC direto, com a página de acompanhamento refletindo a mudança. Ver D-023 para a lacuna de verificação do lado do painel (sem senha da conta demo).
+- **Working tree com alterações pendentes de commit** — esta sessão não commitou nem fez push; aguardando instrução do responsável.
 
 ## Onde retomar (próxima sessão)
 
-- **Repositório:** `origin/main` está em `d078905` (Fases 0–4 publicadas). Working tree limpo, sem commits pendentes de push.
-- **Próxima etapa a iniciar: Fase 5 — Pedido transacional.** Escopo (docs/12): criação real de pedido a partir do carrinho local (hoje o botão "Enviar pedido" fica desabilitado de propósito em `/carrinho`), cálculo de total no servidor em transação (nunca confiar em preço/total enviado pelo navegador), snapshots de produto/preço/adicional no pedido, máquina de estados do pedido, idempotência do envio (evitar pedido duplicado por duplo clique/retry).
+- **Repositório:** último commit publicado em `origin/main` continua sendo `d078905` (Fases 0–4). As mudanças da Fase 5 estão no working tree local, ainda sem commit.
+- **Próxima etapa a iniciar: Fase 6 — Operação em tempo real.** Escopo (docs/12): KDS (kitchen display), assinatura Realtime do Supabase para pedidos/disponibilidade, alertas sonoros/visuais para pedido novo, reconexão com invalidação de cache (não confiar só em eventos perdidos), polling de segurança a cada 15s, filtros por status, disponibilidade rápida direto do KDS.
 - **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`.
-- **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection (ver tabela "Bloqueios externos").
+- **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection, senha da conta demo (ver tabela "Bloqueios externos").
 - **Observações técnicas para quem continuar:**
   - `middleware.ts` foi renomeado para `proxy.ts` (convenção do Next.js 16.2).
-  - Lição repetida três vezes agora (D-015 na Fase 2, D-017 na Fase 3, reaplicada na Fase 4): funções novas podem receber `GRANT EXECUTE` para `anon`/`authenticated` de duas formas diferentes — via `PUBLIC` (`revoke ... from public` resolve) ou via grant nomeado direto (só `revoke ... from <papel>` nomeado resolve). Depois de criar qualquer função nova, **sempre confirme com uma consulta direta** (`has_function_privilege`), não confie só no `get_advisors` (ele já mostrou resultado desatualizado/cacheado mais de uma vez nesta sessão).
-  - `eslint.config.mjs` agora ignora variáveis/parâmetros prefixados com `_` (convenção usada em `prevState`/`formData` não utilizados de `useActionState`) e tem `eslint-disable-next-line react-hooks/set-state-in-effect` pontual em `menu-browser.tsx`/`cart-client.tsx` (padrão SSR-safe de ler `localStorage` em `useEffect`, legítimo e não uma falha real).
-  - `lib/env/index.ts`: variáveis genuinamente opcionais usam `z.preprocess` para tratar string vazia como ausente (D-018) — ao adicionar uma nova variável opcional, seguir esse padrão, não `.optional()` puro. `SUPABASE_SERVICE_ROLE_KEY` agora é opcional no schema; a exigência real está em `lib/supabase/admin.ts`.
-  - Edge runtime (`proxy.ts`) não pode usar `node:crypto` — o cookie de sessão anônima usa Web Crypto API (`crypto.getRandomValues`) ali; o hash HMAC do token (que precisa da pimenta) roda depois, em contexto Node (`modules/service-session/domain/hash-token.ts`).
-  - `guest_sessions` não tem nenhuma policy de RLS para `anon`/`authenticated` — todo acesso é via RPC `SECURITY DEFINER` (`ensure_guest_session`, `get_public_menu`). Isso é intencional, não uma lacuna.
-  - O gate de assinatura da Fase 2 bloqueia qualquer estabelecimento sem `subscriptions` ativa — o estabelecimento demo precisou ganhar um plano e assinatura persistentes em `imenu-dev` para o catálogo/cardápio público poder ser testado manualmente (ver "Dados de demonstração" acima).
-  - Dado de demonstração novo nesta fase: mesa "Mesa 7" com token público real, criada via UI — não é seed formal (mesmo regime de D-016).
+  - Lição repetida três vezes nas fases anteriores (D-015, D-017): funções novas podem receber `GRANT EXECUTE` para `anon`/`authenticated` de duas formas diferentes — via `PUBLIC` (`revoke ... from public` resolve) ou via grant nomeado direto (só `revoke ... from <papel>` nomeado resolve). Nesta fase, o padrão `revoke all ... from public, <papel>` seguido de `grant` só para quem precisa funcionou corretamente já na primeira tentativa para as 3 funções novas (confirmado por `has_function_privilege`, não só pelo advisor).
+  - `eslint.config.mjs` ignora variáveis/parâmetros prefixados com `_`; `react-hooks/set-state-in-effect` é desabilitado pontualmente onde `localStorage` é lido em `useEffect` (padrão SSR-safe, legítimo).
+  - `lib/env/index.ts`: variáveis genuinamente opcionais usam `z.preprocess` para tratar string vazia como ausente (D-018).
+  - `guest_sessions`, `orders`, `order_items`, `order_item_options`, `order_status_history` e `table_service_sessions` não têm policy de RLS de escrita para `anon`/`authenticated` — toda escrita passa por função `SECURITY DEFINER`. Isso é intencional, não uma lacuna.
+  - **Módulos com `import "server-only"` não podem ser importados por testes unitários** (o pacote `server-only` não está instalado — só o bundler do Next.js sabe resolvê-lo via shim especial; o Vitest quebra). Por isso `lib/rate-limit/memory.ts` existe separado de `lib/rate-limit/index.ts`: a lógica pura (testável) fica sem o import, a orquestração (`server-only`, lê env) fica em `index.ts`. Ao adicionar lógica de domínio testável em um módulo que hoje é `server-only`, considere o mesmo split.
+  - Token de rastreamento do pedido (`orders.public_tracking_token_hash`) é um HMAC determinístico de `clientRequestId` (não um valor aleatório hasheado) — ver D-019 para o motivo (retry idempotente precisa devolver o mesmo token sem reler o banco).
+  - `create_public_order` recebe só `tableToken` (não `establishmentSlug`) — ver D-020. O parâmetro `p_expected_total_cents`/`p_items` têm default no Postgres para poderem ser omitidos pelo cliente Supabase-js quando ausentes (evita ter que enviar `null` explicitamente).
+  - Dado de demonstração desta fase: o pedido `A001` criado durante a verificação em navegador (Suco de Laranja, Mesa 7) ficou persistido em `imenu-dev` no status `accepted` — mesmo regime de D-016, não é seed formal.
 

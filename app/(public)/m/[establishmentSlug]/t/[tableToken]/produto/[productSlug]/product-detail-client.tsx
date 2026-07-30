@@ -69,12 +69,14 @@ export function ProductDetailClient({
       return;
     }
 
+    const selectedOptionIds: string[] = [];
     const selectedOptionNames: string[] = [];
     let optionsTotalCents = 0;
     for (const group of product.optionGroups) {
       const selectedIds = selections[group.id] ?? new Set<string>();
       for (const option of group.options) {
         if (selectedIds.has(option.id)) {
+          selectedOptionIds.push(option.id);
           selectedOptionNames.push(option.name);
           optionsTotalCents += option.priceDeltaCents;
         }
@@ -89,6 +91,7 @@ export function ProductDetailClient({
       name: product.name,
       unitPriceCents: product.basePriceCents + optionsTotalCents,
       quantity,
+      optionIds: selectedOptionIds,
       optionNames: selectedOptionNames,
       notes: notes.trim() || undefined,
     });

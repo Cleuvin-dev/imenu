@@ -1,12 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatMoney } from "@/lib/money";
-import { readCart, writeCart, cartSubtotalCents, type Cart } from "@/modules/service-session/domain/cart";
+import {
+  readCart,
+  writeCart,
+  clearCart,
+  cartSubtotalCents,
+  getOrCreateClientRequestId,
+  clearClientRequestId,
+  type Cart,
+} from "@/modules/service-session/domain/cart";
 
-export function CartClient({ establishmentSlug, tableToken }: { establishmentSlug: string; tableToken: string }) {
+export function CartClient({
+  establishmentSlug,
+  tableToken,
+  canOrder,
+  blockedReason,
+}: {
+  establishmentSlug: string;
+  tableToken: string;
+  canOrder: boolean;
+  blockedReason: string | null;
+}) {
+  const router = useRouter();
   const [cart, setCart] = useState<Cart | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     // localStorage não existe durante o SSR; ler aqui (depois da hidratação)
@@ -37,6 +60,51 @@ export function CartClient({ establishmentSlug, tableToken }: { establishmentSlu
     });
   }
 
+  async function handleSubmitOrder() {
+    if (!cart || cart.items.length === 0) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    const clientRequestId = getOrCreateClientRequestId(establishmentSlug, tableToken);
+    const subtotal = cartSubtotalCents(cart);
+
+    try {
+      const response = await fetch("/api/public/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableToken,
+          clientRequestId,
+          expectedTotalCents: subtotal,
+          items: cart.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            selectedOptionIds: item.optionIds,
+            notes: item.notes,
+          })),
+        }),
+      });
+
+      const payload: { order?: { trackingToken: string }; message?: string } = await response.json();
+
+      if (!response.ok || !payload.order) {
+        setError(payload.message ?? "Não foi possível enviar o pedido. Tente novamente.");
+        setSubmitting(false);
+        requestAnimationFrame(() => errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+        return;
+      }
+
+      clearClientRequestId(establishmentSlug, tableToken);
+      clearCart(establishmentSlug, tableToken);
+      router.push(`/pedido/${payload.order.trackingToken}`);
+    } catch {
+      setError("Não foi possível enviar o pedido. Verifique sua conexão e tente novamente.");
+      setSubmitting(false);
+      requestAnimationFrame(() => errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    }
+  }
+
   if (!cart) {
     return null;
   }
@@ -56,10 +124,20 @@ export function CartClient({ establishmentSlug, tableToken }: { establishmentSlu
   }
 
   const subtotal = cartSubtotalCents(cart);
+  const canSubmit = canOrder && !submitting;
 
   return (
     <div className="flex flex-col gap-4 px-4 pb-32 pt-4">
       <h1 className="text-lg font-semibold text-neutral-950">Seu pedido</h1>
+
+      {!canOrder ? (
+        <p className="rounded-control bg-warning/10 px-3 py-2 text-sm text-warning">
+          {blockedReason === "closed"
+            ? "Fora do horário de funcionamento — pedidos indisponíveis agora."
+            : "Pedidos pausados temporariamente pela equipe do local."}
+        </p>
+      ) : null}
+
       <div className="flex flex-col gap-3">
         {cart.items.map((item) => (
           <div key={item.id} className="rounded-card border border-neutral-200 bg-white p-3">
@@ -116,14 +194,20 @@ export function CartClient({ establishmentSlug, tableToken }: { establishmentSlu
         </p>
       </div>
 
+      {error ? (
+        <p ref={errorRef} role="alert" className="rounded-control bg-danger/10 px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+
       <div className="fixed inset-x-0 bottom-0 border-t border-neutral-200 bg-white p-4">
         <button
           type="button"
-          disabled
-          title="O envio de pedidos chega na próxima fase do MVP."
-          className="w-full cursor-not-allowed rounded-control bg-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-500"
+          onClick={handleSubmitOrder}
+          disabled={!canSubmit}
+          className="w-full rounded-control bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Enviar pedido (em breve)
+          {submitting ? "Enviando…" : "Enviar pedido"}
         </button>
       </div>
     </div>

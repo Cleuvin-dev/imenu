@@ -27,8 +27,14 @@ export default async function PainelPage() {
       </div>
       <div className="flex flex-wrap gap-3">
         <Link
-          href="/painel/cardapio/produtos"
+          href="/painel/pedidos"
           className="rounded-control bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700"
+        >
+          Pedidos
+        </Link>
+        <Link
+          href="/painel/cardapio/produtos"
+          className="rounded-control border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:border-primary-600"
         >
           Cardápio: produtos
         </Link>

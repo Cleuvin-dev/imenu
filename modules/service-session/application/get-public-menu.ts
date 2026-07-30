@@ -1,17 +1,31 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { extractClientIp, hashIp } from "@/lib/rate-limit/hash-ip";
 import { GUEST_SESSION_COOKIE, GUEST_SESSION_MAX_AGE_SECONDS } from "@/modules/service-session/domain/guest-cookie";
 import { hashGuestToken } from "@/modules/service-session/domain/hash-token";
 import { publicMenuSchema, type PublicMenu } from "@/modules/service-session/schemas/public-menu.schema";
 
 /**
  * Lê o cardápio público via RPC de leitura limitada e, quando válido,
- * registra/renova a sessão anônima da mesa. Falha fechado: qualquer erro ou
- * resposta inesperada vira `{ valid: false }`, nunca um erro genérico que
- * revele detalhes internos (docs/11 AC-PUB-002).
+ * registra/renova a sessão anônima da mesa. Falha fechado: qualquer erro,
+ * limite de requisições excedido ou resposta inesperada vira
+ * `{ valid: false }`, nunca um erro genérico que revele detalhes internos
+ * (docs/11 AC-PUB-002).
  */
 export async function getPublicMenu(establishmentSlug: string, tableToken: string): Promise<PublicMenu> {
+  const headerList = await headers();
+  const ipHash = hashIp(extractClientIp(headerList.get("x-forwarded-for")));
+  const rateLimit = await checkRateLimit({
+    key: `menu:${ipHash}:${tableToken}`,
+    limit: 60,
+    windowSeconds: 60,
+  });
+  if (!rateLimit.allowed) {
+    return { valid: false };
+  }
+
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase.rpc("get_public_menu", {

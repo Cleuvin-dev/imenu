@@ -24,6 +24,9 @@ export default async function CarrinhoPage({
     return <UnavailableState reason={menu.access.reason} />;
   }
 
+  const canOrder = menu.operation.isOpenNow && menu.operation.acceptingOrders;
+  const blockedReason = !menu.operation.isOpenNow ? "closed" : !menu.operation.acceptingOrders ? "paused" : null;
+
   return (
     <main className="min-h-screen bg-neutral-50">
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
@@ -32,7 +35,12 @@ export default async function CarrinhoPage({
         </Link>
         <p className="text-sm text-neutral-600">Mesa {menu.table.name}</p>
       </header>
-      <CartClient establishmentSlug={establishmentSlug} tableToken={tableToken} />
+      <CartClient
+        establishmentSlug={establishmentSlug}
+        tableToken={tableToken}
+        canOrder={canOrder}
+        blockedReason={blockedReason}
+      />
     </main>
   );
 }
