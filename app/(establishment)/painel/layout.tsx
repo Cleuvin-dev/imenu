@@ -4,6 +4,8 @@ import { getPlatformAdminContext } from "@/lib/auth/platform";
 import { resolveActiveEstablishment } from "@/modules/tenancy/application/resolve-active-establishment";
 import { MEMBER_ROLE_LABELS } from "@/modules/tenancy/domain/member-role-labels";
 import { selectEstablishmentAction, clearActiveEstablishmentAction, signOutAction } from "@/app/(establishment)/painel/actions";
+import { evaluateEstablishmentAccess } from "@/modules/billing/application/evaluate-establishment-access";
+import { OwnerBillingSummary } from "@/app/(establishment)/painel/owner-billing-summary";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthenticatedUser();
@@ -65,29 +67,58 @@ export default async function PainelLayout({ children }: { children: React.React
   }
 
   const { establishment, establishments } = resolution;
+  const access = await evaluateEstablishmentAccess(establishment.establishmentId);
+
+  const header = (
+    <header className="flex items-center justify-between gap-4 border-b border-neutral-200 bg-white px-4 py-3 sm:px-6">
+      <div>
+        <p className="text-sm font-semibold text-neutral-950">{establishment.tradeName}</p>
+        <p className="text-xs text-neutral-600">{MEMBER_ROLE_LABELS[establishment.role]}</p>
+      </div>
+      <div className="flex items-center gap-4">
+        {establishments.length > 1 ? (
+          <form action={clearActiveEstablishmentAction}>
+            <button type="submit" className="text-sm font-medium text-primary-700 hover:underline">
+              Trocar estabelecimento
+            </button>
+          </form>
+        ) : null}
+        <form action={signOutAction}>
+          <button type="submit" className="text-sm font-medium text-neutral-600 hover:underline">
+            Sair
+          </button>
+        </form>
+      </div>
+    </header>
+  );
+
+  if (!access.allowed) {
+    return (
+      <div className="flex min-h-full flex-1 flex-col">
+        {header}
+        <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-16 text-center sm:px-6">
+          <h1 className="text-xl font-semibold text-neutral-950">Acesso operacional indisponível</h1>
+          {establishment.role === "owner" ? (
+            <>
+              <p className="max-w-md text-sm text-neutral-600">
+                O acesso ao painel está bloqueado por uma pendência na assinatura. Veja abaixo a situação atual.
+              </p>
+              <OwnerBillingSummary establishmentId={establishment.establishmentId} />
+            </>
+          ) : (
+            <p className="max-w-md text-sm text-neutral-600">
+              O acesso operacional deste estabelecimento está temporariamente indisponível. Fale com o
+              proprietário do estabelecimento.
+            </p>
+          )}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="flex items-center justify-between gap-4 border-b border-neutral-200 bg-white px-4 py-3 sm:px-6">
-        <div>
-          <p className="text-sm font-semibold text-neutral-950">{establishment.tradeName}</p>
-          <p className="text-xs text-neutral-600">{MEMBER_ROLE_LABELS[establishment.role]}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          {establishments.length > 1 ? (
-            <form action={clearActiveEstablishmentAction}>
-              <button type="submit" className="text-sm font-medium text-primary-700 hover:underline">
-                Trocar estabelecimento
-              </button>
-            </form>
-          ) : null}
-          <form action={signOutAction}>
-            <button type="submit" className="text-sm font-medium text-neutral-600 hover:underline">
-              Sair
-            </button>
-          </form>
-        </div>
-      </header>
+      {header}
       <main className="flex flex-1 flex-col px-4 py-6 sm:px-6">{children}</main>
     </div>
   );

@@ -112,6 +112,24 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** nenhum — mudança de nomenclatura apenas, mesma função no mesmo caminho de execução.
 - **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
 
+## D-015 — `GRANT EXECUTE TO PUBLIC` anula revoke nomeado em função nova
+
+- **Data:** 29/07/2026
+- **Contexto:** ao criar as funções de cobrança da Fase 2 (`confirm_invoice_payment`, `reverse_payment`, `process_overdue_subscriptions`), segui o padrão da Fase 1 de `revoke execute ... from anon` / `from anon, authenticated` logo após o `create or replace function`. O `get_advisors` continuou acusando `anon` e `authenticated` como executores após a migração. Uma consulta direta a `pg_proc.proacl` confirmou: toda função nova recebe `GRANT EXECUTE TO PUBLIC` (entrada `=X/postgres`) por padrão do Supabase; um `revoke ... from anon` só remove uma concessão nomeada a `anon` — que nem chegou a existir separadamente — e não afeta a concessão a `PUBLIC`, que cobre `anon`/`authenticated`/qualquer papel futuro independentemente de revokes nomeados.
+- **Decisão:** corrigir com `revoke all on function ... from public;` explícito, seguido de `grant execute ... to <papéis corretos>;` (migração `20260729190008_billing_functions_privilege_fix.sql`). Isso funcionou porque, na Fase 1, os helpers de RLS (`is_active_member` etc.) já nasceram com `revoke ... from public` na própria migração de criação — por isso não tiveram esse problema; as funções de trigger (`handle_new_auth_user`) também usaram `from public` desde o início. As funções de cobrança foram o primeiro caso em que criei uma função nova e tentei revogar apenas de papéis nomeados, sem tocar em `PUBLIC`.
+- **Alternativas consideradas:** nenhuma — é a forma correta de revogar privilégio default do Postgres; não há atalho seguro.
+- **Impacto:** nenhum dado foi exposto de fato — o problema foi pego pelo `get_advisors` e por uma consulta a `has_function_privilege` antes de qualquer uso real, ainda na mesma sessão de desenvolvimento. Regra prática registrada para todas as fases seguintes: **toda função nova deve terminar com `revoke all ... from public` explícito**, nunca confiar em `revoke ... from anon`/`from authenticated` isolado.
+- **Aprovado por:** decisão técnica autônoma (engenheiro responsável), registrada para transparência.
+
+## D-016 — Dado de demonstração criado sob autorização explícita do responsável
+
+- **Data:** 29/07/2026
+- **Contexto:** o responsável pediu para "ver o primeiro projeto integrável" e depois para simplificar as credenciais de teste. A ferramenta de execução SQL bloqueou automaticamente a primeira tentativa de inserir um usuário real (com senha) em `auth.users` no banco de desenvolvimento compartilhado, por ser uma mudança de estado persistente não pedida explicitamente.
+- **Decisão:** parei e perguntei; o responsável autorizou explicitamente ("Pode criar a conta demo"). Criado o usuário `admin@imenu.local` (owner do estabelecimento fictício "Restaurante Demo iMenu") em `imenu-dev`, fora do versionamento do repositório.
+- **Alternativas consideradas:** mostrar a aplicação só sem login (rejeitada pelo responsável, que preferiu poder clicar no fluxo completo).
+- **Impacto:** existe uma conta sintética persistente em `imenu-dev` (não é seed formal de `docs/14`, não deve ser confundida com dado de produção). Antes de produção, o checklist de `docs/10 §10` já prevê "contas demo removidas ou desativadas" — este registro serve de lembrete de que esta conta específica existe.
+- **Aprovado por:** usuário, via resposta direta em 29/07/2026.
+
 ## Modelo de nova entrada
 
 ```md
