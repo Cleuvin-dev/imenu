@@ -349,15 +349,17 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 
 ## Última entrega
 
-- Fase 7 concluída: conta e fechamento da mesa (ver seção "Fase 7 concluída" acima para a lista completa de migrações e arquivos). Fase 6 (operação em tempo real) e a aplicação da imagem de hero na página inicial também fazem parte do que está pendente de commit desta sessão.
+- Fase 7 concluída: conta e fechamento da mesa (ver seção "Fase 7 concluída" acima para a lista completa de migrações e arquivos).
 - Arquivos principais: `supabase/migrations/20260730130000..130004_*.sql`, `supabase/tests/0006_bill_requests_and_table_sessions.sql`, `tests/unit/bill-request-domain.test.ts`, `modules/service-session/{schemas,domain,application}/*bill*`, `app/api/public/bill-requests/`, `app/(public)/m/[establishmentSlug]/t/[tableToken]/conta/`, `app/(establishment)/painel/caixa/`.
 - Verificado em 30/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (61/61) e `npm run build` passam. Teste de integração `0006_bill_requests_and_table_sessions.sql` executado via MCP contra `imenu-dev` com sucesso (rollback completo, cobre AC-BILL-001/002 e casos negativos). Fluxo completo testado em navegador real via Playwright (duas abas simultâneas — consumidor + caixa), incluindo o caminho de fechamento forçado com pedido em aberto. Zero erros de console. Dois bugs reais encontrados e corrigidos durante a implementação/teste: D-031 (decisão de desenho: fechar sessão é ação própria, não subordinada às transições de bill_requests) e D-032 (`get_table_bill_status` escolhia a sessão errada em empate de timestamp).
-- Working tree com alterações pendentes de commit desta sessão (Fases 6 e 7 completas, mais a página inicial) — aguardando instrução do responsável para commit/push.
+- **Commitado e publicado:** commit `fa7c5d1` (Fase 7) enviado para `origin/main` em cima de `9d9123a` (Fase 6 + página inicial, commitado pelo próprio responsável em sessão anterior) e `e44e46e` (fix do cardápio público). Deploy automático da Vercel concluído com sucesso; `https://imenu-nu.vercel.app` já serve a Fase 7 (testado ao vivo: `/m/cantina-da-nonna/t/.../conta` e `/entrar` respondendo 200 após o deploy).
+- Working tree limpo — nada pendente de commit nesta sessão.
 
 ## Onde retomar (próxima sessão)
 
-- **Repositório:** Fases 0–7 completas localmente; `origin/main` tem até o fix do cardápio público (D-025 a D-027) — as mudanças das Fases 6 e 7 (e a página inicial) ainda **não foram commitadas nem enviadas**.
+- **Repositório:** Fases 0–7 completas, commitadas e publicadas em `origin/main` (`fa7c5d1`), com deploy ao vivo confirmado em `https://imenu-nu.vercel.app`.
 - **Próxima etapa a iniciar: Fase 8 — Administração completa.** Escopo (docs/12): dashboard do estabelecimento, equipe/convites, horários/configurações, página de assinatura, dashboard geral do superadmin, filtros, administradores da plataforma, auditoria consultável.
+- **Credenciais de demonstração ativas no deploy:** `owner-cantina@imenu.demo` / `CantinaDemo123!` (proprietário da Cantina da Nonna) e `superadmin@imenu.demo` / `SuperAdminDemo123!` (administrador geral) — ver D-026. Não documentadas em nenhum outro lugar do repositório, por segurança.
 - **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`.
 - **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection (ver tabela "Bloqueios externos").
 - **Observações técnicas para quem continuar:**
