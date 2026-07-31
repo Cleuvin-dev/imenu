@@ -1,6 +1,6 @@
 # Status de implementação — iMenu MVP
 
-**Atualizado em:** 30/07/2026 (Fase 5 concluída; bug do deploy na Vercel corrigido)  
+**Atualizado em:** 30/07/2026 (Fase 6 concluída; bug do deploy na Vercel corrigido)  
 **Estado inicial:** documentação concluída; implementação ainda não iniciada.
 
 ## Como atualizar
@@ -225,6 +225,44 @@ Fluxo completo do consumidor testado via Playwright headless contra o servidor d
 
 **Lacuna registrada (D-023):** não foi possível clicar fisicamente nos botões de `/painel/pedidos` num navegador autenticado como `admin@imenu.local` — a senha da conta demo não está registrada em lugar nenhum (corretamente) e `SUPABASE_SERVICE_ROLE_KEY` continua vazia (bloqueio já conhecido), impedindo gerar uma sessão de teste programaticamente. A lógica exata que esses botões chamam (`transition_order_status`) foi validada de forma equivalente via SQL/RPC direto; as páginas do painel foram confirmadas por build bem-sucedido e redirecionamento correto (307) para `/entrar` quando não autenticado.
 
+## Fase 6 concluída (30/07/2026) — Operação em tempo real
+
+### Migrações (`supabase/migrations/`)
+
+- `20260730110000_operations_realtime.sql`: adiciona `orders` e `products` à publicação `supabase_realtime` (docs/08 §7) — sem policy nova, o Realtime reavalia as mesmas policies de `SELECT` já ativas/forçadas (qualquer membro ativo do tenant; `anon` não lê nenhuma das duas diretamente).
+- `20260730110001_realtime_replica_identity_full.sql`: `orders`/`products` passam para `REPLICA IDENTITY FULL`. Não era a causa raiz do bug descrito abaixo (ver D-028), mas é a configuração correta para que o registro antigo completo esteja disponível em updates/deletes, então mantida.
+
+Aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` revalidado: nenhum aviso novo além dos já aceitos nas Fases 1–5.
+
+### Aplicação (Next.js)
+
+- `modules/operations/domain/board-columns.ts`: mapeia os 7 status de pedido para 5 colunas do KDS (`new`, `preparing`, `ready`, `finished`, `exception`); só as 3 primeiras aparecem por padrão (docs/04 O-02).
+- `modules/operations/domain/order-urgency.ts`: idade em minutos e 3 níveis de urgência (normal/warning/urgent) — usados só nas colunas ativas (Novos/Em preparo/Prontos), nunca em pedidos já finalizados/cancelados.
+- `modules/operations/domain/new-order-alerts.ts`: decide quais pedidos `pending` ainda não geraram alerta sonoro/visual (nunca alerta de novo por um pedido já visto, nunca alerta retroativamente pelo backlog já existente ao abrir a tela).
+- `modules/operations/domain/sound-preference.ts`: preferência de som por dispositivo via `localStorage` (docs/08 §8).
+- `modules/operations/application/list-kitchen-board.ts`: snapshot do KDS — últimas 24h + qualquer pedido ainda aberto fora dessa janela (docs/06 §7), itens/opções buscados em lote (sem N+1).
+- `modules/operations/application/use-realtime-invalidate.ts`: único hook client-side dentro de `modules/` neste projeto (o resto do módulo é server-only) — assina `postgres_changes` filtrado por `establishment_id`, invalida a query em cada evento e ao (re)conectar; nunca confia no conteúdo do evento (docs/08 §7, docs/05 §7). Aguarda a sessão (`auth.getSession()`) antes de assinar — ver D-028 para o motivo (bug real encontrado e corrigido nesta fase).
+- `public/sounds/new-order.wav`: chime curto de dois tons, sintetizado localmente (não baixado de terceiros), ~34 KB.
+- `app/(establishment)/painel/query-provider.tsx`: `QueryClientProvider` do `@tanstack/react-query` (dependência já provisionada na Fase 0, nunca usada até agora) montado no layout do painel do estabelecimento.
+- `app/(establishment)/painel/pedidos/`: `page.tsx` virou um Server Component fino (snapshot inicial + papel do usuário); `kitchen-board.tsx` (novo, client) é o KDS de verdade — cabeçalho com indicador de conexão/relógio/alternância de som, filtro por abas no mobile e colunas simultâneas no desktop (`grid md:grid-cols-2 lg:grid-cols-3`), toggle para mostrar finalizados/exceções, cartões com número/mesa/idade/itens/observações e destaque crescente por tempo de espera, polling de segurança de 15s (`refetchInterval`) via react-query.
+- `app/(establishment)/painel/pedidos/[id]/transition-order-form.tsx`: ganhou a prop `size` ("compact"/"large") para reutilizar o mesmo formulário/Server Action nos botões grandes do KDS sem duplicar lógica.
+- `app/(establishment)/painel/disponibilidade/`: nova tela "Disponibilidade rápida" (docs/04 O-05) — lista simples de produtos publicados com toggle disponível/esgotado, também com assinatura Realtime (reflete em outras abas abertas), reaproveitando a Server Action `setProductAvailabilityAction` já existente da Fase 3.
+- `modules/ordering/domain/order-status-labels.ts`: ganhou `ORDER_TRANSITION_ACTION_LABELS` (ver D-029).
+
+### Bugs reais encontrados e corrigidos durante a verificação em navegador (não eram do escopo original da fase, mas foram corrigidos por serem triviais e visíveis na própria tela que a fase entrega)
+
+- **D-028:** UPDATE de status não chegava via Realtime (só INSERT) — causa raiz era uma corrida entre a resolução assíncrona da sessão do `@supabase/ssr` e a assinatura síncrona do canal, fazendo o `phx_join` sair como `anon`. Corrigido aguardando `auth.getSession()` antes de assinar.
+- **D-029:** botões de transição mostravam o nome do status ("Aceito") em vez do verbo da ação ("Aceitar") — também presente na página de detalhe do pedido (Fase 5).
+- **D-030:** "Mesa Mesa 7" — duplicação do prefixo "Mesa" em 5 telas (cardápio público, carrinho, acompanhamento de pedido, KDS, detalhe do pedido).
+
+### Testes
+
+- `tests/unit/operations-domain.test.ts`: 13 testes cobrindo `boardColumnFor` (todos os 7 status), `minutesSince`/`urgencyForMinutes` (faixas de urgência) e `findUnseenPendingOrderIds` (não alerta pedido já visto, alerta pedido novo, ignora pedido fora de `pending`).
+
+### Verificação manual em navegador (Playwright, contra o servidor de dev real + `imenu-dev` real)
+
+Login como `owner-cantina@imenu.demo` (credencial de demonstração da Fase 5/D-026 — resolveu a lacuna de D-023, agora é possível clicar fisicamente nos botões). Fluxo completo e real, sem simulação: consumidor cria um pedido de verdade via `/m/cantina-da-nonna/...` (QR real) → aparece no KDS em ~1s sem reload → "Aceitar" move para "Em preparo" em ~1,6s → "Marcar pronto" move para "Prontos" em ~1,3s → "Marcar entregue" move para "Finalizados" em ~1,3s — todas as transições refletidas só por Realtime, sem nenhum reload de página. Botão "Ativar alertas sonoros"/"Testar som" testado sem erro. Tela de disponibilidade rápida testada: 10 produtos listados, toggle disponível/esgotado confirmado no banco e refletido na tela em ~2s. Zero erros de console em toda a sessão de testes.
+
 ## Fases
 
 | Fase | Estado | Evidência/observação |
@@ -235,8 +273,8 @@ Fluxo completo do consumidor testado via Playwright headless contra o servidor d
 | 3 — Catálogo e mídias | Concluída (29/07/2026) | 6 migrações aplicadas em `imenu-dev` via MCP (tabelas, RLS, funções, storage, índices); AC-CAT-001 testado via script SQL; upload validado por magic bytes (13 testes unitários); categorias/produtos/opções/mídia funcionando de ponta a ponta, testado em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 3 concluída" acima. |
 | 4 — Mesas, QR e público | Concluída (29/07/2026) | 7 migrações aplicadas em `imenu-dev` via MCP (mesas, sessão anônima, RPCs de cardápio público, horário de funcionamento); AC-PUB-001, AC-PUB-002 e AC-QR-001 testados via script SQL (rollback completo); QR PNG/SVG por mesa com regeneração de token; cardápio público mobile + carrinho local testados de ponta a ponta em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 4 concluída" acima. |
 | 5 — Pedido transacional | Concluída (30/07/2026) | 9 migrações aplicadas em `imenu-dev` via MCP (sessão de mesa, pedidos/itens/opções/histórico, `create_public_order`, `transition_order_status`, `get_public_order`, índices); AC-ORD-002 a 008 testados via script SQL (rollback completo); carrinho público conectado de ponta a ponta (testado em navegador real contra o servidor de dev + Supabase real, pedido de verdade criado e transicionado); painel de pedidos com transições por papel; `npm run lint`, `npm run typecheck`, `npm test` (40/40) e `npm run build` passam. Ver seção "Fase 5 concluída" acima. |
-| 6 — Operação em tempo real | Não iniciada | Próxima fase. |
-| 7 — Conta e sessão da mesa | Não iniciada | — |
+| 6 — Operação em tempo real | Concluída (30/07/2026) | 2 migrações aplicadas em `imenu-dev` via MCP (Realtime habilitado em `orders`/`products`, replica identity full); KDS reconstruído com colunas em tempo real, alertas sonoros/visuais, filtros, polling de 15s e reconexão; tela de disponibilidade rápida; ciclo completo de um pedido real (pending→accepted→preparing→ready→delivered) testado em navegador real, cada transição refletida via Realtime em ~1-2s sem reload; `npm run lint`, `npm run typecheck`, `npm test` (53/53) e `npm run build` passam. Ver seção "Fase 6 concluída" acima. |
+| 7 — Conta e sessão da mesa | Não iniciada | Próxima fase. |
 | 8 — Administração completa | Não iniciada | — |
 | 9 — Robustez e deploy | Não iniciada | — |
 
@@ -248,7 +286,7 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 |---|---|---|
 | Lint | Passou (`npm run lint`) | 30/07/2026 |
 | Typecheck | Passou (`npm run typecheck`) | 30/07/2026 |
-| Unitários | Passou — 40/40 (`npm test`) | 30/07/2026 |
+| Unitários | Passou — 53/53 (`npm test`) | 30/07/2026 |
 | Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql`, `0003_catalog_gate.sql`, `0004_public_menu_gate.sql` e `0005_orders_transactional.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 30/07/2026 |
 | E2E P0 | `npm run test:e2e` roda mas não encontra nenhum arquivo `*.spec.ts` — Playwright configurado (`playwright.config.ts`) porém nenhum teste E2E formal foi escrito ainda; verificação end-to-end até aqui foi feita via scripts Playwright ad-hoc descartáveis (ver "Verificação manual em navegador" de cada fase) | 30/07/2026 |
 | Build | Passou (`npm run build`) | 30/07/2026 |
@@ -267,22 +305,23 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 | Definir valores comerciais dos planos | Dono do produto | Seed/configuração produção (hoje só existe plano de teste, criado e revertido dentro do script de teste) | Pendente |
 | Definir e-mail transacional | Dono do produto | Envio automático de convite | Opcional no MVP |
 | Habilitar "Leaked Password Protection" no Supabase Auth | Dono do produto | Segurança de contas antes de produção (checklist docs/10 §10) | Pendente — ajuste de configuração no painel do projeto, fora do escopo de migração |
-| Senha da conta demo `admin@imenu.local` desconhecida nesta sessão | — | Impediu login via navegador para clicar fisicamente nos botões de `/painel/pedidos` (Fase 5); a lógica foi validada por RPC direto (D-023) | Informativo — não bloqueia entrega, só limita a forma de evidência de UI |
+| Senha da conta demo `admin@imenu.local` desconhecida (Fase 5) | — | Impediu login via navegador para clicar fisicamente nos botões de `/painel/pedidos` (Fase 5); a lógica foi validada por RPC direto (D-023) | **Resolvido na Fase 6** — credenciais reais de `owner-cantina@imenu.demo` (D-026) permitiram testar o KDS inteiro em navegador |
 
 ## Última entrega
 
-- Fase 5 concluída: pedido transacional (ver seção "Fase 5 concluída" acima para a lista completa de migrações e arquivos).
-- Arquivos principais: `supabase/migrations/20260730100000..100008_*.sql`, `supabase/tests/0005_orders_transactional.sql`, `tests/unit/ordering-domain.test.ts`, `lib/rate-limit/`, `modules/ordering/`, `app/api/public/orders/`, `app/(public)/pedido/[trackingToken]/`, `app/(public)/m/[establishmentSlug]/t/[tableToken]/carrinho/cart-client.tsx`, `modules/service-session/domain/cart.ts`, `app/(establishment)/painel/pedidos/`.
-- Verificado em 30/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (40/40) e `npm run build` passam. `npm run test:e2e` roda sem erro mas não encontra nenhum arquivo de teste (bloqueio já conhecido). Testes AC-ORD-002 a 008 executados via MCP contra `imenu-dev` com sucesso (rollback completo). Fluxo completo do consumidor (QR → produto → carrinho → **enviar pedido de verdade** → acompanhamento público, token/QR inválidos) testado em navegador real via Playwright contra o servidor de dev + `imenu-dev` reais, sem erros de console; o pedido criado foi conferido no banco e depois transicionado para `accepted` via RPC direto, com a página de acompanhamento refletindo a mudança. Ver D-023 para a lacuna de verificação do lado do painel (sem senha da conta demo).
-- Deploy na Vercel funcionando de ponta a ponta, incluindo o cardápio público (ver D-027).
+- Fase 6 concluída: operação em tempo real (ver seção "Fase 6 concluída" acima para a lista completa de migrações e arquivos).
+- Arquivos principais: `supabase/migrations/20260730110000_operations_realtime.sql`, `supabase/migrations/20260730110001_realtime_replica_identity_full.sql`, `modules/operations/`, `app/(establishment)/painel/pedidos/kitchen-board.tsx`, `app/(establishment)/painel/disponibilidade/`, `app/(establishment)/painel/query-provider.tsx`, `public/sounds/new-order.wav`, `tests/unit/operations-domain.test.ts`.
+- Verificado em 30/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (53/53) e `npm run build` passam. Fluxo completo testado em navegador real via Playwright, autenticado como `owner-cantina@imenu.demo` (credencial de demonstração real, não simulada) contra o servidor de dev + `imenu-dev` reais: um pedido real criado pelo consumidor apareceu no KDS em ~1s e percorreu `pending → accepted → preparing → ready → delivered` inteiramente por Realtime, sem nenhum reload de página, cada transição em ~1-2s. Zero erros de console. Três bugs reais (não deste escopo original, mas visíveis na própria tela entregue) foram encontrados e corrigidos durante a verificação: D-028 (Realtime não recebia UPDATE — corrigido), D-029 (rótulo de botão errado) e D-030 ("Mesa Mesa 7" duplicado).
+- Working tree com alterações pendentes de commit desta sessão — aguardando instrução do responsável para commit/push.
 
 ## Onde retomar (próxima sessão)
 
-- **Repositório:** Fases 0–5 publicadas em `origin/main`, mais o deploy na Vercel e a correção do bug do cardápio público (D-025 a D-027).
-- **Próxima etapa a iniciar: Fase 6 — Operação em tempo real.** Escopo (docs/12): KDS (kitchen display), assinatura Realtime do Supabase para pedidos/disponibilidade, alertas sonoros/visuais para pedido novo, reconexão com invalidação de cache (não confiar só em eventos perdidos), polling de segurança a cada 15s, filtros por status, disponibilidade rápida direto do KDS.
+- **Repositório:** Fases 0–6 completas localmente; `origin/main` tem até o fix do cardápio público (D-025 a D-027) — as mudanças da Fase 6 (esta sessão) ainda **não foram commitadas nem enviadas**.
+- **Próxima etapa a iniciar: Fase 7 — Conta e fechamento da mesa.** Escopo (docs/12): tabela `bill_requests`, tela pública de solicitar conta, tela de caixa (reconhecer/marcar entregue/fechar sessão de mesa), estados e histórico, total informativo da sessão. O canal Realtime `tenant:{id}:bill_requests` já é mencionado em docs/08 §7 mas a tabela não existe ainda — não foi criada nesta fase por não ser escopo da Fase 6.
 - **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`.
-- **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection, senha da conta demo (ver tabela "Bloqueios externos").
+- **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection (ver tabela "Bloqueios externos"). A pendência de senha da conta demo (Fase 5/D-023) **foi resolvida** — as credenciais reais de `owner-cantina@imenu.demo` (D-026) permitiram testar a Fase 6 inteira em navegador, incluindo os botões de transição do KDS.
 - **Observações técnicas para quem continuar:**
+  - Qualquer nova assinatura Realtime (ex.: `bill_requests` na Fase 7) deve reaproveitar `modules/operations/application/use-realtime-invalidate.ts`, que já aguarda a sessão antes de assinar o canal (ver D-028 — sem isso, updates silenciosamente não chegam, só inserts).
   - `middleware.ts` foi renomeado para `proxy.ts` (convenção do Next.js 16.2).
   - Lição repetida três vezes nas fases anteriores (D-015, D-017): funções novas podem receber `GRANT EXECUTE` para `anon`/`authenticated` de duas formas diferentes — via `PUBLIC` (`revoke ... from public` resolve) ou via grant nomeado direto (só `revoke ... from <papel>` nomeado resolve). Nesta fase, o padrão `revoke all ... from public, <papel>` seguido de `grant` só para quem precisa funcionou corretamente já na primeira tentativa para as 3 funções novas (confirmado por `has_function_privilege`, não só pelo advisor).
   - `eslint.config.mjs` ignora variáveis/parâmetros prefixados com `_`; `react-hooks/set-state-in-effect` é desabilitado pontualmente onde `localStorage` é lido em `useEffect` (padrão SSR-safe, legítimo).

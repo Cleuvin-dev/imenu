@@ -55,4 +55,5 @@ export async function setProductAvailabilityAction(productId: string, isAvailabl
   await requireActiveEstablishmentId(AVAILABILITY_ROLES);
   await setProductAvailability(productId, isAvailable);
   revalidatePath("/painel/cardapio/produtos");
+  revalidatePath("/painel/disponibilidade");
 }

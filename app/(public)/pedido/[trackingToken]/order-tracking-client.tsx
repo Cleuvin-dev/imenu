@@ -53,7 +53,7 @@ export function OrderTrackingClient({
       <div>
         <span className="rounded-chip bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">iMenu</span>
         <h1 className="mt-2 text-lg font-semibold text-neutral-950">Pedido {order.number}</h1>
-        {order.tableName ? <p className="text-sm text-neutral-600">Mesa {order.tableName}</p> : null}
+        {order.tableName ? <p className="text-sm text-neutral-600">{order.tableName}</p> : null}
       </div>
 
       <div className="rounded-card border border-neutral-200 bg-white p-4" aria-live="polite">

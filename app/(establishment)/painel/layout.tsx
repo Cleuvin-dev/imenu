@@ -6,6 +6,7 @@ import { MEMBER_ROLE_LABELS } from "@/modules/tenancy/domain/member-role-labels"
 import { selectEstablishmentAction, clearActiveEstablishmentAction, signOutAction } from "@/app/(establishment)/painel/actions";
 import { evaluateEstablishmentAccess } from "@/modules/billing/application/evaluate-establishment-access";
 import { OwnerBillingSummary } from "@/app/(establishment)/painel/owner-billing-summary";
+import { PainelQueryProvider } from "@/app/(establishment)/painel/query-provider";
 
 // Nunca prerenderizar em build: toda a árvore depende de sessão/cookies do
 // usuário. Sem isso, uma página-folha sem chamada dinâmica própria (ex.:
@@ -127,7 +128,9 @@ export default async function PainelLayout({ children }: { children: React.React
   return (
     <div className="flex min-h-full flex-1 flex-col">
       {header}
-      <main className="flex flex-1 flex-col px-4 py-6 sm:px-6">{children}</main>
+      <main className="flex flex-1 flex-col px-4 py-6 sm:px-6">
+        <PainelQueryProvider>{children}</PainelQueryProvider>
+      </main>
     </div>
   );
 }

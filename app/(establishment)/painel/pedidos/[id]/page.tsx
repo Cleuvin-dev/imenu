@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { resolveActiveEstablishment } from "@/modules/tenancy/application/resolve-active-establishment";
 import { getOrder } from "@/modules/ordering/application/get-order";
-import { ORDER_STATUS_LABELS } from "@/modules/ordering/domain/order-status-labels";
+import { ORDER_STATUS_LABELS, ORDER_TRANSITION_ACTION_LABELS } from "@/modules/ordering/domain/order-status-labels";
 import { allowedTransitionsFor } from "@/modules/ordering/domain/transitions";
 import { formatMoney } from "@/lib/money";
 import { formatDateTimePtBr } from "@/lib/dates";
@@ -33,7 +33,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
       <div>
         <h1 className="text-lg font-semibold text-neutral-950">Pedido {order.order_number}</h1>
         <p className="text-sm text-neutral-600">
-          Mesa {order.table?.name ?? "—"} · {formatDateTimePtBr(order.created_at)}
+          {order.table?.name ?? "Mesa —"} · {formatDateTimePtBr(order.created_at)}
         </p>
       </div>
 
@@ -59,7 +59,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
                 key={rule.to}
                 orderId={order.id}
                 toStatus={rule.to}
-                label={ORDER_STATUS_LABELS[rule.to]}
+                label={ORDER_TRANSITION_ACTION_LABELS[rule.to]}
                 requiresReason={rule.requiresReason}
               />
             ))}

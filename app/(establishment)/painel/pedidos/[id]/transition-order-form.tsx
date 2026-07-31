@@ -9,14 +9,27 @@ type OrderStatus = Database["public"]["Enums"]["order_status"];
 
 const initialState: TransitionOrderActionState = {};
 
-function SubmitButton({ label, isDanger }: { label: string; isDanger: boolean }) {
+const BUTTON_SIZE_CLASSES = {
+  compact: "px-3 py-2 text-xs",
+  large: "w-full px-4 py-3 text-sm",
+} as const;
+
+function SubmitButton({
+  label,
+  isDanger,
+  size,
+}: {
+  label: string;
+  isDanger: boolean;
+  size: "compact" | "large";
+}) {
   const { pending } = useFormStatus();
-  const className = isDanger
-    ? "rounded-control border border-danger px-3 py-2 text-xs font-semibold text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
-    : "rounded-control bg-primary-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60";
+  const base = isDanger
+    ? "rounded-control border border-danger font-semibold text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
+    : "rounded-control bg-primary-600 font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
-    <button type="submit" disabled={pending} className={className}>
+    <button type="submit" disabled={pending} className={`${base} ${BUTTON_SIZE_CLASSES[size]}`}>
       {pending ? "Enviando…" : label}
     </button>
   );
@@ -27,11 +40,13 @@ export function TransitionOrderForm({
   toStatus,
   label,
   requiresReason,
+  size = "compact",
 }: {
   orderId: string;
   toStatus: OrderStatus;
   label: string;
   requiresReason: boolean;
+  size?: "compact" | "large";
 }) {
   const boundAction = transitionOrderAction.bind(null, orderId, toStatus);
   const [state, formAction] = useActionState(boundAction, initialState);
@@ -47,7 +62,7 @@ export function TransitionOrderForm({
           rows={2}
           placeholder="Motivo (obrigatório)"
           aria-label={`Motivo para ${label.toLowerCase()}`}
-          className="w-48 rounded-control border border-neutral-200 px-2 py-1 text-xs"
+          className={`rounded-control border border-neutral-200 px-2 py-1 text-xs ${size === "large" ? "w-full" : "w-48"}`}
         />
       ) : null}
       {state.error ? (
@@ -55,7 +70,7 @@ export function TransitionOrderForm({
           {state.error}
         </p>
       ) : null}
-      <SubmitButton label={label} isDanger={isDanger} />
+      <SubmitButton label={label} isDanger={isDanger} size={size} />
     </form>
   );
 }

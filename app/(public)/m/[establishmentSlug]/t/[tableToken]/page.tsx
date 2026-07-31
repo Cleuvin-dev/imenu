@@ -41,7 +41,7 @@ export default async function CardapioPublicoPage({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold text-neutral-950">{establishment.tradeName}</h1>
-            <p className="text-sm text-neutral-600">Mesa {table.name}</p>
+            <p className="text-sm text-neutral-600">{table.name}</p>
           </div>
         </div>
         {!operation.isOpenNow ? (

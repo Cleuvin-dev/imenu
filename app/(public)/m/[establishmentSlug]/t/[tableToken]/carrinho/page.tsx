@@ -33,7 +33,7 @@ export default async function CarrinhoPage({
         <Link href={`/m/${establishmentSlug}/t/${tableToken}`} className="text-sm font-medium text-primary-700">
           ← Voltar ao cardápio
         </Link>
-        <p className="text-sm text-neutral-600">Mesa {menu.table.name}</p>
+        <p className="text-sm text-neutral-600">{menu.table.name}</p>
       </header>
       <CartClient
         establishmentSlug={establishmentSlug}

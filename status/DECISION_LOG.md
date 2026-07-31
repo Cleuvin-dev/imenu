@@ -230,6 +230,32 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** cardápio público (Fase 4) e fluxo de pedido (Fase 5) voltam a funcionar no deploy real da Vercel. Nenhuma migração ou código de domínio precisou mudar — era puramente configuração de ambiente.
 - **Aprovado por:** usuário, que autorizou explicitamente (1) checar o valor via Vercel CLI e (2) sobrescrever e redeployar, via `AskUserQuestion` nesta sessão.
 
+## D-028 — Realtime do KDS não recebia UPDATE (só INSERT): causa e correção
+
+- **Data:** 30/07/2026
+- **Contexto:** ao construir o KDS da Fase 6 (assinatura Realtime em `orders`/`products`), a chegada de um pedido novo era refletida instantaneamente no board, mas mudanças de status (aceitar, iniciar preparo, marcar pronto...) feitas pelo próprio operador não moviam o card entre colunas sem recarregar a página — mesmo com a mutação confirmada no banco (`transition_order_status` retornando sucesso).
+- **Investigação:** descartada a hipótese inicial (falta de `REPLICA IDENTITY FULL` em `orders`/`products` — aplicada mesmo assim por ser boa prática, ver migração `20260730110001`, mas não era a causa raiz: a documentação do Supabase confirma que o registro `new` de um `UPDATE` sempre viaja completo independente da replica identity). Captura direta dos frames do WebSocket do Realtime (via Playwright, evento `framesent`/`framereceived`) mostrou que o `phx_join` do canal saía **sem `access_token`** — ou seja, a conexão Realtime se autenticava como `anon`, não como o usuário logado. Como a policy de `SELECT` em `orders`/`products` exige `is_active_member()` (que depende de `auth.uid()`), a autorização do Realtime falhava silenciosamente para todo evento — só o INSERT "parecia" funcionar porque a query de refetch inicial (disparada ao status `SUBSCRIBED`) já trazia o pedido novo por uma via diferente (Server Action com RLS normal), mascarando o problema.
+- **Causa raiz confirmada:** `createSupabaseBrowserClient()` (via `@supabase/ssr`) resolve a sessão (cookies) de forma assíncrona e só propaga o JWT para o cliente Realtime (`realtime.setAuth`) depois disso. Como `modules/operations/application/use-realtime-invalidate.ts` chamava `.channel(...).subscribe()` de forma síncrona logo após criar o cliente, o `phx_join` saía antes da sessão estar pronta, "travando" aquela conexão como anônima.
+- **Decisão:** `use-realtime-invalidate.ts` agora aguarda `await supabase.auth.getSession()` antes de criar o canal e assinar — elimina a corrida. Validado em navegador real (Playwright, conta `owner-cantina@imenu.demo` contra `imenu-dev`): ciclo completo `pending → accepted → preparing → ready → delivered` de um pedido real refletido no KDS sem reload, cada transição em ~1–1.6s.
+- **Impacto:** qualquer assinatura Realtime futura neste projeto (ex.: solicitações de conta na Fase 7) deve seguir o mesmo padrão — aguardar a sessão antes de assinar um canal autenticado. Registrado aqui para não repetir a investigação.
+- **Aprovado por:** decisão técnica, sem mudança de escopo/custo/regra de negócio.
+
+## D-029 — Botões de transição de pedido mostravam o nome do status ("Aceito"), não o verbo da ação ("Aceitar")
+
+- **Data:** 30/07/2026
+- **Contexto:** ao testar o KDS em navegador real (Fase 6), os botões de ação mostravam "Aceito", "Rejeitado", "Cancelado" — rótulos de **estado** (`ORDER_STATUS_LABELS`, já usados para o chip de status atual) reaproveitados como rótulo do **botão de ação**. Bug pré-existente da Fase 5 (mesmo padrão na página de detalhe do pedido), só percebido agora ao olhar a captura de tela do KDS.
+- **Decisão:** criado `ORDER_TRANSITION_ACTION_LABELS` (verbo no imperativo: "Aceitar", "Iniciar preparo", "Marcar pronto", "Marcar entregue", "Rejeitar", "Cancelar") em `modules/ordering/domain/order-status-labels.ts`, usado nos botões do KDS e da página de detalhe; `ORDER_STATUS_LABELS` continua para exibir o status atual (chip, histórico).
+- **Impacto:** correção de texto, sem mudança de regra de negócio ou de banco.
+- **Aprovado por:** correção direta de bug encontrado durante a verificação obrigatória em navegador desta sessão.
+
+## D-030 — "Mesa Mesa 7": duplicação do prefixo "Mesa" em 5 telas (público e painel)
+
+- **Data:** 30/07/2026
+- **Contexto:** `dining_tables.name` já armazena o nome de exibição completo (ex.: `"Mesa 7"`, definido livremente pelo dono ao cadastrar a mesa — ver Fase 4). Várias telas prefixavam esse valor com `"Mesa "` de novo, produzindo `"Mesa Mesa 7"`. Encontrado ao inspecionar a captura de tela do KDS desta fase.
+- **Decisão:** removido o prefixo redundante em `app/(public)/m/.../page.tsx`, `.../carrinho/page.tsx`, `app/(public)/pedido/[trackingToken]/order-tracking-client.tsx`, `app/(establishment)/painel/pedidos/kitchen-board.tsx` e `.../pedidos/[id]/page.tsx`. `app/(establishment)/painel/mesas/page.tsx` e a rota de QR já usavam `table.name` puro — eram a referência correta.
+- **Impacto:** correção de texto em 5 arquivos, sem mudança de regra de negócio ou de banco. Nenhuma migração necessária (o dado já estava certo; era só a exibição).
+- **Aprovado por:** correção direta de bug encontrado durante a verificação obrigatória em navegador desta sessão.
+
 ## Modelo de nova entrada
 
 ```md
