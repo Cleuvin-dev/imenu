@@ -1,6 +1,6 @@
 # Status de implementação — iMenu MVP
 
-**Atualizado em:** 30/07/2026 (Fase 6 concluída; bug do deploy na Vercel corrigido)  
+**Atualizado em:** 30/07/2026 (Fase 7 concluída; bug do deploy na Vercel corrigido)  
 **Estado inicial:** documentação concluída; implementação ainda não iniciada.
 
 ## Como atualizar
@@ -263,6 +263,46 @@ Aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` revalidado: nenhum 
 
 Login como `owner-cantina@imenu.demo` (credencial de demonstração da Fase 5/D-026 — resolveu a lacuna de D-023, agora é possível clicar fisicamente nos botões). Fluxo completo e real, sem simulação: consumidor cria um pedido de verdade via `/m/cantina-da-nonna/...` (QR real) → aparece no KDS em ~1s sem reload → "Aceitar" move para "Em preparo" em ~1,6s → "Marcar pronto" move para "Prontos" em ~1,3s → "Marcar entregue" move para "Finalizados" em ~1,3s — todas as transições refletidas só por Realtime, sem nenhum reload de página. Botão "Ativar alertas sonoros"/"Testar som" testado sem erro. Tela de disponibilidade rápida testada: 10 produtos listados, toggle disponível/esgotado confirmado no banco e refletido na tela em ~2s. Zero erros de console em toda a sessão de testes.
 
+## Fase 7 concluída (30/07/2026) — Conta e fechamento da mesa
+
+### Migrações (`supabase/migrations/`)
+
+- `20260730130000_bill_requests_tables.sql`: enum `bill_request_status` (`requested`, `acknowledged`, `bill_delivered`, `closed`, `canceled`); tabela `bill_requests` (tenant, mesa, sessão, quem pediu, quem atendeu, timestamps por marco, motivo de cancelamento); índice único parcial garantindo no máximo uma solicitação **ativa** por sessão (docs/03 §regra 5). RLS ativa/forçada: leitura para owner/manager/kitchen/cashier/viewer (`has_tenant_role` explícito na policy — `menu_editor` não tem nenhum acesso, docs/02 §3); sem policy de escrita, toda mutação passa pelas funções abaixo.
+- `20260730130001_bill_request_functions.sql`: `request_table_bill` (RPC pública — valida mesa/estabelecimento/assinatura, exige sessão aberta [`IM011` se não houver], idempotente **por sessão** — não por `client_request_id` — via o índice único, então qualquer dispositivo da mesma mesa que repetir a chamada recebe a mesma solicitação); `get_table_bill_status` (leitura pública fail-closed, total informativo somado dos pedidos da sessão); `transition_bill_request_status` (só `acknowledged`/`bill_delivered`/`canceled` — ver D-031 para o motivo de `closed` não estar aqui); `close_table_session` (ver D-031 — bloqueia com pedido não-terminal a menos que owner/manager confirme `p_force=true`, auditado em `audit_logs` nesse caso).
+- `20260730130002_bill_requests_realtime.sql`: `bill_requests`/`table_service_sessions` adicionadas à publicação `supabase_realtime` e já criadas com `REPLICA IDENTITY FULL` desde o início (lição de D-028 aplicada preventivamente).
+- `20260730130003_get_table_bill_status_names.sql` (corretiva): `get_table_bill_status` passou a incluir `establishmentTradeName`/`tableName`, necessários para o cabeçalho de `/m/.../conta`.
+- `20260730130004_get_table_bill_status_prefer_open.sql` (corretiva — ver D-032): correção de uma condição de corrida na escolha de qual sessão exibir quando há empate de `opened_at`.
+
+Todas aplicadas com sucesso em `imenu-dev` via MCP. `get_advisors` revalidado: nenhum aviso novo além dos já aceitos nas Fases 1–6; os 4 privilégios das funções novas (`request_table_bill`/`get_table_bill_status` só `anon`; `transition_bill_request_status`/`close_table_session` só `authenticated`) vieram exatamente como esperado já na primeira tentativa.
+
+### Aplicação (Next.js)
+
+- `modules/service-session/schemas/bill-request.schema.ts`: Zod para o input público e para o status (`discriminatedUnion` em `valid`, mesmo padrão de `public-order-status.schema.ts`).
+- `modules/service-session/domain/bill-request-labels.ts`: dois conjuntos de rótulo — operacional (`BILL_REQUEST_STATUS_LABELS`) e o do consumidor (`PUBLIC_BILL_REQUEST_STATUS_LABELS`, "recebida/visualizada/atendida" per docs/04 P-06) — mais `BILL_REQUEST_ACTION_LABELS` (verbo do botão, lição de D-029 aplicada desde o início desta vez).
+- `modules/service-session/domain/bill-request-transitions.ts`: espelha `transition_bill_request_status` só para orientar a UI (mesmo padrão de `modules/ordering/domain/transitions.ts`).
+- `modules/service-session/application/request-table-bill.ts` / `get-table-bill-status.ts`: lado público, mesmo padrão de `create-public-order.ts`/`get-public-order.ts` (cookie de sessão anônima, rate limit 3/10min para solicitar e 60/min para consultar status, fail-closed).
+- `modules/service-session/application/list-caixa-board.ts`: snapshot do caixa (solicitações + mesas abertas) sem N+1 — mesmo padrão de `list-kitchen-board.ts` da Fase 6.
+- `modules/service-session/application/transition-bill-request.ts` / `close-table-session.ts`: lado autenticado, chamam as RPCs e mapeiam erros para `AppErrorCode`.
+- `app/api/public/bill-requests/route.ts` (`POST`) e `.../[tableToken]/route.ts` (`GET`): endpoints públicos, mesmo padrão dos endpoints de pedido da Fase 5.
+- `app/(public)/m/[establishmentSlug]/t/[tableToken]/conta/`: página pública "Solicitar conta" (docs/04 P-06) — total informativo, texto "A equipe levará a conta até sua mesa", polling de 8s do status (recebida/visualizada/atendida/cancelada), link adicionado no cabeçalho do cardápio público.
+- `app/(establishment)/painel/caixa/`: tela do caixa (docs/04 O-04) — reaproveita o padrão de KDS da Fase 6 (react-query + `useRealtimeInvalidate`, agora assinando `bill_requests`, `table_service_sessions` e `orders` ao mesmo tempo para o mesmo snapshot); solicitações ativas em destaque no topo, mesas abertas abaixo, histórico recente; botão de "forçar fechamento" só aparece depois de uma primeira tentativa bloqueada por pedido em aberto. Acesso de leitura restrito (owner/manager/kitchen/cashier/viewer; `menu_editor` vê "Acesso restrito" em vez de erro genérico) tanto na página quanto na Server Action de refetch (defesa em profundidade).
+- Link "Caixa" adicionado ao dashboard do painel (`app/(establishment)/painel/page.tsx`).
+
+### Bugs reais encontrados e corrigidos durante a verificação (não eram do escopo original, mas visíveis nas próprias telas entregues)
+
+- **D-031:** decisão de desenhar "fechar sessão" como ação independente das transições de `bill_requests` — sem isso, mesas cujo cliente pede a conta verbalmente (sem usar o app) nunca fechariam.
+- **D-032:** `get_table_bill_status` podia escolher a sessão errada em caso de empate de timestamp — encontrado pelo teste de integração, não pela UI.
+
+### Testes
+
+- `tests/unit/bill-request-domain.test.ts`: 8 testes cobrindo transições permitidas por papel (cashier pode reconhecer; kitchen/viewer não podem agir em nada; cancelar exige motivo; `bill_delivered`/`closed`/`canceled` não têm transições próprias) e completude/distinção dos rótulos.
+- `supabase/tests/0006_bill_requests_and_table_sessions.sql`: mesmo formato dos testes anteriores (fixtures + asserções + `rollback` final, nunca persiste dados). Cobre: solicitar conta sem sessão aberta falha (`IM011`); AC-BILL-002 (retry de dispositivo diferente não duplica solicitação ativa); papel insuficiente (kitchen) barrado com `42501`; RLS nega leitura a `menu_editor`; fluxo feliz completo (reconhecer → marcar entregue, idempotente); `closed` não é transição válida de `transition_bill_request_status` (`IM010`); fechar com pedido não-terminal falha (`IM013`) e cashier não pode forçar (`42501`), mas owner pode, e gera 1 linha de auditoria; fechar de novo é no-op idempotente; próximo pedido após fechar abre sessão nova (docs/03 §regra 8); cancelar sem motivo falha (`IM009`); depois de cancelada, uma nova solicitação pode ser feita para a mesma sessão; `get_table_bill_status` sempre prioriza a sessão aberta (regressão de D-032).
+- **Executado com sucesso via MCP contra `imenu-dev` em 30/07/2026** — todas as asserções passaram, nenhuma linha persistida.
+
+### Verificação manual em navegador (Playwright, contra o servidor de dev real + `imenu-dev` real)
+
+Fluxo completo e real, duas abas simultâneas: consumidor abre `/m/cantina-da-nonna/t/.../conta`, vê o total informativo (R$ 20,70) e solicita a conta → status "Recebida". Staff (`owner-cantina@imenu.demo`) abre `/painel/caixa`, vê o cartão da Mesa 1 → clica "Reconhecer" → aba do consumidor reflete "Visualizada" via polling em até 8s, sem reload → staff clica "Marcar conta entregue" → staff clica "Fechar sessão": como havia um pedido de teste da Fase 6 ainda não finalizado nessa mesa, o sistema corretamente bloqueou o fechamento e ofereceu "Forçar fechamento mesmo com pedidos em aberto" — confirmado como owner, a sessão fechou e o registro de auditoria foi conferido no banco. Aba do consumidor reflete "Atendida" ao final. Zero erros de console em toda a sessão de testes.
+
 ## Fases
 
 | Fase | Estado | Evidência/observação |
@@ -274,8 +314,8 @@ Login como `owner-cantina@imenu.demo` (credencial de demonstração da Fase 5/D-
 | 4 — Mesas, QR e público | Concluída (29/07/2026) | 7 migrações aplicadas em `imenu-dev` via MCP (mesas, sessão anônima, RPCs de cardápio público, horário de funcionamento); AC-PUB-001, AC-PUB-002 e AC-QR-001 testados via script SQL (rollback completo); QR PNG/SVG por mesa com regeneração de token; cardápio público mobile + carrinho local testados de ponta a ponta em navegador real; `npm run lint`, `npm run typecheck`, `npm test` (26/26) e `npm run build` passam. Ver seção "Fase 4 concluída" acima. |
 | 5 — Pedido transacional | Concluída (30/07/2026) | 9 migrações aplicadas em `imenu-dev` via MCP (sessão de mesa, pedidos/itens/opções/histórico, `create_public_order`, `transition_order_status`, `get_public_order`, índices); AC-ORD-002 a 008 testados via script SQL (rollback completo); carrinho público conectado de ponta a ponta (testado em navegador real contra o servidor de dev + Supabase real, pedido de verdade criado e transicionado); painel de pedidos com transições por papel; `npm run lint`, `npm run typecheck`, `npm test` (40/40) e `npm run build` passam. Ver seção "Fase 5 concluída" acima. |
 | 6 — Operação em tempo real | Concluída (30/07/2026) | 2 migrações aplicadas em `imenu-dev` via MCP (Realtime habilitado em `orders`/`products`, replica identity full); KDS reconstruído com colunas em tempo real, alertas sonoros/visuais, filtros, polling de 15s e reconexão; tela de disponibilidade rápida; ciclo completo de um pedido real (pending→accepted→preparing→ready→delivered) testado em navegador real, cada transição refletida via Realtime em ~1-2s sem reload; `npm run lint`, `npm run typecheck`, `npm test` (53/53) e `npm run build` passam. Ver seção "Fase 6 concluída" acima. |
-| 7 — Conta e sessão da mesa | Não iniciada | Próxima fase. |
-| 8 — Administração completa | Não iniciada | — |
+| 7 — Conta e sessão da mesa | Concluída (30/07/2026) | 5 migrações aplicadas em `imenu-dev` via MCP (`bill_requests`, `request_table_bill`, `get_table_bill_status`, `transition_bill_request_status`, `close_table_session`, Realtime); teste de integração `0006_bill_requests_and_table_sessions.sql` cobrindo AC-BILL-001/002 e casos negativos (rollback completo); tela pública "Solicitar conta" e tela de caixa testadas em navegador real, incluindo o caminho de fechamento forçado com pedido em aberto; `npm run lint`, `npm run typecheck`, `npm test` (61/61) e `npm run build` passam. Ver seção "Fase 7 concluída" acima. |
+| 8 — Administração completa | Não iniciada | Próxima fase. |
 | 9 — Robustez e deploy | Não iniciada | — |
 
 Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
@@ -286,8 +326,8 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 |---|---|---|
 | Lint | Passou (`npm run lint`) | 30/07/2026 |
 | Typecheck | Passou (`npm run typecheck`) | 30/07/2026 |
-| Unitários | Passou — 53/53 (`npm test`) | 30/07/2026 |
-| Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql`, `0003_catalog_gate.sql`, `0004_public_menu_gate.sql` e `0005_orders_transactional.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 30/07/2026 |
+| Unitários | Passou — 61/61 (`npm test`) | 30/07/2026 |
+| Integração/RLS | Passou — `0001_identity_tenancy_rls.sql`, `0002_billing_subscription_gate.sql`, `0003_catalog_gate.sql`, `0004_public_menu_gate.sql`, `0005_orders_transactional.sql` e `0006_bill_requests_and_table_sessions.sql` executados via MCP contra `imenu-dev` (todas as asserções OK, rollback completo). Ainda não rodam em `npm test`/CI: exigem conexão Postgres direta (Docker/Supabase local indisponível — mesmo bloqueio da Fase 0) | 30/07/2026 |
 | E2E P0 | `npm run test:e2e` roda mas não encontra nenhum arquivo `*.spec.ts` — Playwright configurado (`playwright.config.ts`) porém nenhum teste E2E formal foi escrito ainda; verificação end-to-end até aqui foi feita via scripts Playwright ad-hoc descartáveis (ver "Verificação manual em navegador" de cada fase) | 30/07/2026 |
 | Build | Passou (`npm run build`) | 30/07/2026 |
 | Segurança (AC-SEC-001) | Passou — `SUPABASE_SERVICE_ROLE_KEY`/`CRON_SECRET`/`ORDER_TRACKING_TOKEN_PEPPER`/`IP_HASH_PEPPER` (nome e valor) ausentes de `.next/static` | 30/07/2026 |
@@ -309,19 +349,21 @@ Estados permitidos: `Não iniciada`, `Em andamento`, `Bloqueada`, `Concluída`.
 
 ## Última entrega
 
-- Fase 6 concluída: operação em tempo real (ver seção "Fase 6 concluída" acima para a lista completa de migrações e arquivos).
-- Arquivos principais: `supabase/migrations/20260730110000_operations_realtime.sql`, `supabase/migrations/20260730110001_realtime_replica_identity_full.sql`, `modules/operations/`, `app/(establishment)/painel/pedidos/kitchen-board.tsx`, `app/(establishment)/painel/disponibilidade/`, `app/(establishment)/painel/query-provider.tsx`, `public/sounds/new-order.wav`, `tests/unit/operations-domain.test.ts`.
-- Verificado em 30/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (53/53) e `npm run build` passam. Fluxo completo testado em navegador real via Playwright, autenticado como `owner-cantina@imenu.demo` (credencial de demonstração real, não simulada) contra o servidor de dev + `imenu-dev` reais: um pedido real criado pelo consumidor apareceu no KDS em ~1s e percorreu `pending → accepted → preparing → ready → delivered` inteiramente por Realtime, sem nenhum reload de página, cada transição em ~1-2s. Zero erros de console. Três bugs reais (não deste escopo original, mas visíveis na própria tela entregue) foram encontrados e corrigidos durante a verificação: D-028 (Realtime não recebia UPDATE — corrigido), D-029 (rótulo de botão errado) e D-030 ("Mesa Mesa 7" duplicado).
-- Working tree com alterações pendentes de commit desta sessão — aguardando instrução do responsável para commit/push.
+- Fase 7 concluída: conta e fechamento da mesa (ver seção "Fase 7 concluída" acima para a lista completa de migrações e arquivos). Fase 6 (operação em tempo real) e a aplicação da imagem de hero na página inicial também fazem parte do que está pendente de commit desta sessão.
+- Arquivos principais: `supabase/migrations/20260730130000..130004_*.sql`, `supabase/tests/0006_bill_requests_and_table_sessions.sql`, `tests/unit/bill-request-domain.test.ts`, `modules/service-session/{schemas,domain,application}/*bill*`, `app/api/public/bill-requests/`, `app/(public)/m/[establishmentSlug]/t/[tableToken]/conta/`, `app/(establishment)/painel/caixa/`.
+- Verificado em 30/07/2026: `npm run lint`, `npm run typecheck`, `npm test` (61/61) e `npm run build` passam. Teste de integração `0006_bill_requests_and_table_sessions.sql` executado via MCP contra `imenu-dev` com sucesso (rollback completo, cobre AC-BILL-001/002 e casos negativos). Fluxo completo testado em navegador real via Playwright (duas abas simultâneas — consumidor + caixa), incluindo o caminho de fechamento forçado com pedido em aberto. Zero erros de console. Dois bugs reais encontrados e corrigidos durante a implementação/teste: D-031 (decisão de desenho: fechar sessão é ação própria, não subordinada às transições de bill_requests) e D-032 (`get_table_bill_status` escolhia a sessão errada em empate de timestamp).
+- Working tree com alterações pendentes de commit desta sessão (Fases 6 e 7 completas, mais a página inicial) — aguardando instrução do responsável para commit/push.
 
 ## Onde retomar (próxima sessão)
 
-- **Repositório:** Fases 0–6 completas localmente; `origin/main` tem até o fix do cardápio público (D-025 a D-027) — as mudanças da Fase 6 (esta sessão) ainda **não foram commitadas nem enviadas**.
-- **Próxima etapa a iniciar: Fase 7 — Conta e fechamento da mesa.** Escopo (docs/12): tabela `bill_requests`, tela pública de solicitar conta, tela de caixa (reconhecer/marcar entregue/fechar sessão de mesa), estados e histórico, total informativo da sessão. O canal Realtime `tenant:{id}:bill_requests` já é mencionado em docs/08 §7 mas a tabela não existe ainda — não foi criada nesta fase por não ser escopo da Fase 6.
+- **Repositório:** Fases 0–7 completas localmente; `origin/main` tem até o fix do cardápio público (D-025 a D-027) — as mudanças das Fases 6 e 7 (e a página inicial) ainda **não foram commitadas nem enviadas**.
+- **Próxima etapa a iniciar: Fase 8 — Administração completa.** Escopo (docs/12): dashboard do estabelecimento, equipe/convites, horários/configurações, página de assinatura, dashboard geral do superadmin, filtros, administradores da plataforma, auditoria consultável.
 - **Pendência bloqueante para operações reais de cron/bootstrap:** `SUPABASE_SERVICE_ROLE_KEY` do projeto `imenu-dev` **continua vazia** em `.env.local` — só o dono do produto consegue pegar em `https://supabase.com/dashboard/project/vvqhvnnsnhwoywbaxcwg/settings/api-keys`.
-- **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection (ver tabela "Bloqueios externos"). A pendência de senha da conta demo (Fase 5/D-023) **foi resolvida** — as credenciais reais de `owner-cantina@imenu.demo` (D-026) permitiram testar a Fase 6 inteira em navegador, incluindo os botões de transição do KDS.
+- **Pendências externas sem prazo definido:** domínio final, projetos Supabase de staging/produção, valores comerciais dos planos reais, e-mail transacional, leaked password protection (ver tabela "Bloqueios externos").
 - **Observações técnicas para quem continuar:**
-  - Qualquer nova assinatura Realtime (ex.: `bill_requests` na Fase 7) deve reaproveitar `modules/operations/application/use-realtime-invalidate.ts`, que já aguarda a sessão antes de assinar o canal (ver D-028 — sem isso, updates silenciosamente não chegam, só inserts).
+  - Qualquer nova assinatura Realtime deve reaproveitar `modules/operations/application/use-realtime-invalidate.ts`, que já aguarda a sessão antes de assinar o canal (ver D-028 — sem isso, updates silenciosamente não chegam, só inserts). Usado agora por `orders`, `products`, `bill_requests` e `table_service_sessions`.
+  - "Fechar sessão" (`close_table_session`) é independente das transições de `bill_requests` — ver D-031 antes de mexer no fluxo de conta/caixa.
+  - Ordenar por timestamp sozinho não é confiável quando múltiplas linhas podem ter sido criadas dentro da mesma transação (`now()` fica congelado) — sempre incluir um desempate determinístico (`id`) e, quando fizer sentido, priorizar por estado antes de timestamp (ver D-032).
   - `middleware.ts` foi renomeado para `proxy.ts` (convenção do Next.js 16.2).
   - Lição repetida três vezes nas fases anteriores (D-015, D-017): funções novas podem receber `GRANT EXECUTE` para `anon`/`authenticated` de duas formas diferentes — via `PUBLIC` (`revoke ... from public` resolve) ou via grant nomeado direto (só `revoke ... from <papel>` nomeado resolve). Nesta fase, o padrão `revoke all ... from public, <papel>` seguido de `grant` só para quem precisa funcionou corretamente já na primeira tentativa para as 3 funções novas (confirmado por `has_function_privilege`, não só pelo advisor).
   - `eslint.config.mjs` ignora variáveis/parâmetros prefixados com `_`; `react-hooks/set-state-in-effect` é desabilitado pontualmente onde `localStorage` é lido em `useEffect` (padrão SSR-safe, legítimo).

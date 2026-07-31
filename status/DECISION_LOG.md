@@ -256,6 +256,22 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** correção de texto em 5 arquivos, sem mudança de regra de negócio ou de banco. Nenhuma migração necessária (o dado já estava certo; era só a exibição).
 - **Aprovado por:** correção direta de bug encontrado durante a verificação obrigatória em navegador desta sessão.
 
+## D-031 — "Fechar sessão" é ação própria, separada das transições de `bill_requests`
+
+- **Data:** 30/07/2026 (sessão da Fase 7)
+- **Contexto:** docs/05 descreve a máquina de estados de `bill_requests` como `requested → acknowledged → bill_delivered → closed` (com `canceled` a partir de `requested`/`acknowledged`), e docs/07 lista só duas funções obrigatórias: `request_table_bill` e `transition_bill_request_status`. Uma leitura literal sugeriria que "fechar" é só mais uma transição de `bill_requests`. Mas isso deixaria mesas sem NUNCA fechar quando o cliente pede a conta de forma verbal ao garçom em vez de usar o app (comum na prática) — a sessão ficaria presa em `open` para sempre, bloqueando o índice único de "uma sessão aberta por mesa" e impedindo a próxima ocupação da mesa.
+- **Decisão:** criada uma função separada, `close_table_session(p_table_service_session_id, p_force)`, chamável independentemente de existir ou não uma solicitação de conta ativa. `transition_bill_request_status` cobre só `acknowledged`/`bill_delivered`/`canceled`; `closed` só existe como efeito colateral de `close_table_session` (que também fecha a `bill_request` ativa, se houver, mantendo os dois em sincronia). Isso também bate com a redação do docs/04 O-04, que lista "reconhecer, marcar entregue **e fechar sessão**" como três ações irmãs, não uma cadeia estritamente sequencial.
+- **Impacto:** o caixa sempre consegue liberar uma mesa, com ou sem solicitação formal de conta. Fechar com pedido não-terminal em aberto exige `p_force=true` e papel owner/manager, e fica auditado em `audit_logs` (`table_session.force_close_with_open_orders`) — verificado em teste de integração real (`supabase/tests/0006_bill_requests_and_table_sessions.sql`) e em navegador (o cenário realmente aconteceu com dados de teste da Fase 6 que ficaram com pedido em aberto).
+- **Aprovado por:** decisão técnica de leitura dos docs, sem mudança de escopo/custo/regra de negócio informada pelo responsável.
+
+## D-032 — `get_table_bill_status` escolhia a sessão errada quando duas sessões tinham o mesmo `opened_at`
+
+- **Data:** 30/07/2026 (sessão da Fase 7)
+- **Contexto:** ao escrever o teste de integração da Fase 7 (`supabase/tests/0006_...sql`), a chamada final de `request_table_bill` devolveu a sessão **fechada** em vez da sessão **aberta** mais recente da mesma mesa. Causa: `get_table_bill_status` ordenava só por `opened_at desc`, e como todo o script de teste roda dentro de uma única transação, `now()` fica **congelado** durante toda a transação (comportamento documentado do Postgres) — as duas sessões de teste, criadas em momentos "diferentes" do script, acabaram com o **mesmo** `opened_at`, e o desempate ficou arbitrário.
+- **Decisão:** `get_table_bill_status` agora ordena por `(status = 'open') desc, opened_at desc, id desc` — a sessão aberta é sempre preferida, independentemente do timestamp, com `id` como desempate final determinístico. Isso não é só uma correção de artefato de teste: é semanticamente mais correto de qualquer forma (uma sessão aberta é sempre "mais atual" para o consumidor do que qualquer sessão já fechada, mesmo em produção, onde timestamps idênticos são raros mas não impossíveis com uploads em lote/replicação). Adicionada asserção explícita no teste de integração para não regredir.
+- **Impacto:** `supabase/migrations/20260730130004_get_table_bill_status_prefer_open.sql`. Nenhuma mudança de contrato (mesmo formato de retorno).
+- **Aprovado por:** correção direta de bug encontrado durante o teste de integração obrigatório desta fase.
+
 ## Modelo de nova entrada
 
 ```md

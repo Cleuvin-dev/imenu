@@ -74,6 +74,99 @@ export type Database = {
           },
         ]
       }
+      bill_requests: {
+        Row: {
+          acknowledged_at: string | null
+          bill_delivered_at: string | null
+          canceled_at: string | null
+          cancellation_reason: string | null
+          client_request_id: string
+          closed_at: string | null
+          created_at: string
+          establishment_id: string
+          handled_by: string | null
+          id: string
+          requested_at: string
+          requested_by_guest_session_id: string | null
+          status: Database["public"]["Enums"]["bill_request_status"]
+          table_id: string
+          table_service_session_id: string
+          updated_at: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          bill_delivered_at?: string | null
+          canceled_at?: string | null
+          cancellation_reason?: string | null
+          client_request_id: string
+          closed_at?: string | null
+          created_at?: string
+          establishment_id: string
+          handled_by?: string | null
+          id?: string
+          requested_at?: string
+          requested_by_guest_session_id?: string | null
+          status?: Database["public"]["Enums"]["bill_request_status"]
+          table_id: string
+          table_service_session_id: string
+          updated_at?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          bill_delivered_at?: string | null
+          canceled_at?: string | null
+          cancellation_reason?: string | null
+          client_request_id?: string
+          closed_at?: string | null
+          created_at?: string
+          establishment_id?: string
+          handled_by?: string | null
+          id?: string
+          requested_at?: string
+          requested_by_guest_session_id?: string | null
+          status?: Database["public"]["Enums"]["bill_request_status"]
+          table_id?: string
+          table_service_session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_requests_establishment_id_fkey"
+            columns: ["establishment_id"]
+            isOneToOne: false
+            referencedRelation: "establishments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_requests_handled_by_fkey"
+            columns: ["handled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_requests_requested_by_guest_session_id_fkey"
+            columns: ["requested_by_guest_session_id"]
+            isOneToOne: false
+            referencedRelation: "guest_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_requests_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "dining_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_requests_table_service_session_id_fkey"
+            columns: ["table_service_session_id"]
+            isOneToOne: false
+            referencedRelation: "table_service_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_hour_exceptions: {
         Row: {
           closes_at: string | null
@@ -1550,6 +1643,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      close_table_session: {
+        Args: { p_force?: boolean; p_table_service_session_id: string }
+        Returns: Json
+      }
       confirm_invoice_payment: {
         Args: {
           p_amount_cents: number
@@ -1594,6 +1691,7 @@ export type Database = {
         Args: { p_tracking_token_hash: string }
         Returns: Json
       }
+      get_table_bill_status: { Args: { p_table_token: string }; Returns: Json }
       has_tenant_role: {
         Args: {
           allowed_roles: Database["public"]["Enums"]["member_role"][]
@@ -1611,12 +1709,28 @@ export type Database = {
       }
       process_overdue_subscriptions: { Args: { p_now?: string }; Returns: Json }
       publish_product: { Args: { p_product_id: string }; Returns: Json }
+      request_table_bill: {
+        Args: {
+          p_client_request_id: string
+          p_guest_token_hash: string
+          p_table_token: string
+        }
+        Returns: Json
+      }
       reverse_payment: {
         Args: { p_payment_id: string; p_reason: string }
         Returns: Json
       }
       set_product_availability: {
         Args: { p_is_available: boolean; p_product_id: string }
+        Returns: Json
+      }
+      transition_bill_request_status: {
+        Args: {
+          p_bill_request_id: string
+          p_reason?: string
+          p_to_status: Database["public"]["Enums"]["bill_request_status"]
+        }
         Returns: Json
       }
       transition_order_status: {
@@ -1631,6 +1745,12 @@ export type Database = {
     }
     Enums: {
       audit_actor_scope: "platform" | "establishment" | "system"
+      bill_request_status:
+        | "requested"
+        | "acknowledged"
+        | "bill_delivered"
+        | "closed"
+        | "canceled"
       invoice_status: "draft" | "open" | "paid" | "overdue" | "void"
       media_kind: "image" | "video"
       member_role:
@@ -1793,6 +1913,13 @@ export const Constants = {
   public: {
     Enums: {
       audit_actor_scope: ["platform", "establishment", "system"],
+      bill_request_status: [
+        "requested",
+        "acknowledged",
+        "bill_delivered",
+        "closed",
+        "canceled",
+      ],
       invoice_status: ["draft", "open", "paid", "overdue", "void"],
       media_kind: ["image", "video"],
       member_role: [

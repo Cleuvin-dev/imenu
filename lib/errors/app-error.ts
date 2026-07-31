@@ -12,6 +12,8 @@ export const APP_ERROR_CODES = {
   PRICE_CHANGED: { status: 409, message: "O preço de um ou mais itens mudou." },
   INVALID_OPTION_SELECTION: { status: 422, message: "Seleção de opções inválida." },
   INVALID_STATUS_TRANSITION: { status: 409, message: "Transição de status não permitida." },
+  NO_ACTIVE_SESSION: { status: 409, message: "Não há uma sessão aberta nesta mesa." },
+  OPEN_ORDERS_PENDING: { status: 409, message: "Há pedidos ainda não finalizados nesta mesa." },
   IDEMPOTENCY_CONFLICT: { status: 409, message: "Requisição conflita com uma anterior." },
   RATE_LIMITED: { status: 429, message: "Muitas tentativas. Aguarde e tente novamente." },
   UNAUTHENTICATED: { status: 401, message: "Sessão ausente ou expirada." },

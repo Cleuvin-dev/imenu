@@ -18,7 +18,7 @@ export type RealtimeConnectionStatus = "connecting" | "connected" | "disconnecte
  * navegador.
  */
 export function useRealtimeInvalidate(params: {
-  table: "orders" | "products";
+  table: "orders" | "products" | "bill_requests" | "table_service_sessions";
   establishmentId: string;
   queryKey: QueryKey;
 }): RealtimeConnectionStatus {

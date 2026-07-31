@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getPublicMenu } from "@/modules/service-session/application/get-public-menu";
 import { getPublicEnv } from "@/lib/env";
 import { buildPublicMediaUrl } from "@/modules/media/domain/public-url";
@@ -43,6 +44,12 @@ export default async function CardapioPublicoPage({
             <h1 className="text-lg font-semibold text-neutral-950">{establishment.tradeName}</h1>
             <p className="text-sm text-neutral-600">{table.name}</p>
           </div>
+          <Link
+            href={`/m/${establishmentSlug}/t/${tableToken}/conta`}
+            className="text-xs font-medium text-primary-700 hover:underline"
+          >
+            Solicitar conta
+          </Link>
         </div>
         {!operation.isOpenNow ? (
           <p className="rounded-control bg-warning/10 px-3 py-2 text-sm text-warning">

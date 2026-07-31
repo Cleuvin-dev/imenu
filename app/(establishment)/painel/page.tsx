@@ -30,6 +30,12 @@ export default async function PainelPage() {
           Pedidos (KDS)
         </Link>
         <Link
+          href="/painel/caixa"
+          className="rounded-control border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:border-primary-600"
+        >
+          Caixa
+        </Link>
+        <Link
           href="/painel/disponibilidade"
           className="rounded-control border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:border-primary-600"
         >
