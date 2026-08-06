@@ -9,12 +9,21 @@ export type LoginActionState = {
   fieldErrors?: AppErrorFieldErrors;
 };
 
+/** Só aceita um caminho relativo interno (evita open redirect via `next`). */
+function safeNextPath(value: FormDataEntryValue | null): string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/painel";
+  }
+  return value;
+}
+
 export async function loginAction(
   _prevState: LoginActionState,
   formData: FormData,
 ): Promise<LoginActionState> {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const next = safeNextPath(formData.get("next"));
 
   try {
     await signIn({ email, password });
@@ -25,5 +34,5 @@ export async function loginAction(
     return { error: "Não foi possível entrar. Tente novamente." };
   }
 
-  redirect("/painel");
+  redirect(next);
 }

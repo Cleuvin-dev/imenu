@@ -19,6 +19,12 @@ export const APP_ERROR_CODES = {
   UNAUTHENTICATED: { status: 401, message: "Sessão ausente ou expirada." },
   FORBIDDEN: { status: 403, message: "Você não tem permissão para esta ação." },
   NOT_FOUND: { status: 404, message: "Recurso não encontrado." },
+  INVITE_INVALID: { status: 410, message: "Este link de convite é inválido, foi revogado ou expirou." },
+  INVITE_ALREADY_ACCEPTED: { status: 409, message: "Este convite já foi utilizado. Entre normalmente." },
+  INVITE_EMAIL_MISMATCH: {
+    status: 403,
+    message: "Este convite foi enviado para outro e-mail. Entre com a conta correspondente.",
+  },
   INTERNAL_ERROR: { status: 500, message: "Ocorreu um erro inesperado. Tente novamente." },
 } as const;
 

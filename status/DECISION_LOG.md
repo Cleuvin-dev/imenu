@@ -272,6 +272,49 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** `supabase/migrations/20260730130004_get_table_bill_status_prefer_open.sql`. Nenhuma mudança de contrato (mesmo formato de retorno).
 - **Aprovado por:** correção direta de bug encontrado durante o teste de integração obrigatório desta fase.
 
+## D-033 — `lib/env` vazava os nomes de todas as variáveis de servidor (inclusive `SUPABASE_SERVICE_ROLE_KEY`) no bundle do cliente
+
+- **Data:** 06/08/2026 (sessão da Fase 8)
+- **Contexto:** ao rodar a verificação obrigatória de segurança (AC-SEC-001) desta fase, `grep` em `.next/static` encontrou o objeto `serverEnvSchema` inteiro (nomes de todas as variáveis: `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, todas as pimentas) dentro de um chunk client-side. Causa raiz: `lib/env/index.ts` nunca teve `import "server-only"` — `getPublicEnv` e `getServerEnv`/`serverEnvSchema` viviam no mesmo módulo. `lib/supabase/client.ts` (`"use client"`, usado pelo hook Realtime da Fase 6) importa `getPublicEnv` de `@/lib/env`; sem a guarda, o bundler não sabia que o resto do arquivo era proibido no navegador e não conseguiu eliminar `serverEnvSchema` por tree-shaking (ele é tecnicamente alcançável a partir de uma exportação do mesmo módulo). **Bug pré-existente desde pelo menos a Fase 6** (rota afetada mais antiga: `/painel/caixa`), não introduzido nesta fase — só descoberto agora porque a verificação de bundle desta fase inspecionou `.next/static` por completo, e não só os nomes específicos que cada fase anterior tinha em mente.
+- **Decisão:** `getPublicEnv` foi extraído para `lib/env/public.ts` (sem `server-only`, seguro para o cliente). `lib/env/index.ts` ganhou `import "server-only"` no topo e reexporta `getPublicEnv` só para conveniência do lado servidor. `lib/supabase/client.ts` e `proxy.ts` (Edge/middleware) passaram a importar diretamente de `@/lib/env/public`, nunca do índice guardado.
+- **Verificação:** rebuild completo (`.next` limpo) + `grep` em todo `.next/static` pelos NOMES das 6 variáveis sensíveis (zero ocorrências) e, adicionalmente (mais rigoroso que as fases anteriores), pelos VALORES reais lidos de `.env.local` (zero ocorrências).
+- **Impacto:** nenhuma mudança de contrato/API; só reorganização de módulo. Nenhum segredo real chegou a vazar (só os *nomes* das variáveis, nunca os valores — confirmado pelo grep de valores), mas o padrão em si já violava a regra do CLAUDE.md.
+- **Aprovado por:** correção direta de bug de segurança encontrado durante a verificação obrigatória desta fase.
+
+## D-034 — Filtros de estabelecimentos/auditoria quebravam a página inteira ao usar "Todos" (string vazia em `.optional()`)
+
+- **Data:** 06/08/2026 (sessão da Fase 8)
+- **Contexto:** verificação manual em navegador (Playwright real) encontrou que `/admin-geral/estabelecimentos` e `/admin-geral/auditoria` lançavam `ZodError` não tratado (página de erro genérica do Next) sempre que o formulário de filtro era submetido com os `<select>` de status/plano em "Todos" (que envia `?status=&planId=`) — mesma classe de bug já documentada em D-018 (`.optional()` sozinho só aceita `undefined`, não `""`, e `searchParams`/`FormData` sempre entregam campo vazio como `""`). Diferente de D-018 (que afetava só `lib/env`), aqui o parse acontecia direto sobre `searchParams` bruto, sem a camada de conversão que os outros formulários desta mesma fase já tinham (ex.: `createEstablishmentAction` fazia `formData.get(x) || undefined` manualmente antes de chamar o schema).
+- **Decisão:** criado `lib/validation/empty-to-undefined.ts` (`optionalFromEmpty`, reaproveitando o padrão `z.preprocess` já usado em `lib/env`) e aplicado em `establishmentFiltersSchema` e `auditFilterSchema`. Não foi replicado ad-hoc em cada schema porque agora há duas ocorrências reais do mesmo problema — momento certo para uma abstração pequena e compartilhada.
+- **Verificação:** reproduzido o crash exato via Playwright, corrigido, e reverificado que submeter os filtros com "Todos"/campos vazios não quebra mais nenhuma das duas páginas (retorna a lista completa, como esperado).
+- **Impacto:** `modules/platform-admin/schemas/update-establishment.schema.ts`, `modules/audit/schemas/audit-filter.schema.ts`. Nenhuma mudança de banco.
+- **Aprovado por:** correção direta de bug encontrado durante a verificação obrigatória em navegador desta fase.
+
+## D-035 — RF-ADM-002 (cadastro de estabelecimento + owner) implementado por completo, mas não verificável em produção sem `SUPABASE_SERVICE_ROLE_KEY`
+
+- **Data:** 06/08/2026 (sessão da Fase 8)
+- **Contexto:** criar o owner inicial de um estabelecimento exige `supabase.auth.admin.createUser` (API administrativa do GoTrue), que só funciona com o cliente service role — mesmo bloqueio já registrado desde a Fase 0/2 (`SUPABASE_SERVICE_ROLE_KEY` continua vazia em `.env.local`, só o dono do produto consegue obter no painel do Supabase).
+- **Decisão:** o fluxo completo foi implementado (`modules/platform-admin/application/create-establishment.ts`, função `platform_bootstrap_establishment` — Postgres, `supabase/migrations/20260806140002_...sql` — e a tela `/admin-geral/estabelecimentos/novo`), incluindo compensação (se o bootstrap na tabela falhar depois do usuário já criado, o usuário é removido — nunca fica uma conta órfã sem estabelecimento). `lib/supabase/admin.ts` já lança um erro claro e específico se a chave não estiver configurada, então clicar em "Cadastrar" sem a chave falha de forma legível, não silenciosa. Isso segue a regra do CLAUDE.md de não declarar uma etapa concluída quando ela depende de mock não documentado — aqui não há mock nenhum: o código real está completo, só falta a credencial externa para exercitá-lo de ponta a ponta.
+- **Impacto:** não foi possível testar em navegador o cadastro de um estabelecimento novo de fato (criação real do usuário owner). A função `platform_bootstrap_establishment` foi validada isoladamente (privilégios corretos via `has_function_privilege`: só `service_role` executa) e o restante do fluxo (formulário, plano ativo populando o select, geração de slug único) foi verificado até o ponto que não depende da chave.
+- **Aprovado por:** decisão técnica — mesmo padrão de bloqueio documentado já aceito nas Fases 0, 2 e 5.
+
+## D-036 — Suspensão/reativação manual (RF-ADM-010) não entrou no escopo da Fase 8
+
+- **Data:** 06/08/2026 (sessão da Fase 8)
+- **Contexto:** docs/12 lista as entregas da Fase 8 como "dashboard do estabelecimento; equipe/convites; horários/configurações; página de assinatura; dashboard geral; filtros; administradores da plataforma; auditoria consultável" — não menciona suspensão/reativação manual com motivo (RF-ADM-010), que é uma ação distinta e mais pesada (exige motivo, nota, precedência sobre reativação automática, docs/09 §9) e não tinha nenhuma base de código anterior.
+- **Decisão:** RF-ADM-004 ("editar dados cadastrais e ativação") foi entregue como o toggle `establishments.is_active` no formulário de edição do estabelecimento — ativação/desativação cadastral simples, não o fluxo completo de suspensão comercial por inadimplência/fraude/etc. (esse já existe automaticamente via `process_overdue_subscriptions`, Fase 2). Suspensão/reativação manual com motivo fica como pendência explícita para uma fase futura ou para o backlog imediato, não como algo "esquecido silenciosamente".
+- **Impacto:** nenhum código de suspensão manual foi criado nesta fase. Registrado aqui para não ser confundido com um esquecimento.
+- **Aprovado por:** leitura literal do escopo documentado em docs/12 Fase 8; não muda custo/credencial, mas é uma decisão de escopo que vale registrar.
+
+## D-037 — Owner mantém acesso só a `/painel/assinatura` mesmo com o painel operacional bloqueado
+
+- **Data:** 06/08/2026 (sessão da Fase 8)
+- **Contexto:** docs/09 §10 exige que, durante bloqueio por inadimplência, o owner continue com "acesso limitado à tela de assinatura, faturas, dados de contato e suporte" e "não pode contornar o bloqueio alterando URL". Antes desta fase, `app/(establishment)/painel/layout.tsx` interceptava `{children}` por completo quando `!access.allowed`, mostrando só um resumo mínimo embutido (`OwnerBillingSummary`) — a página de assinatura completa desta fase (`/painel/assinatura`) nunca era alcançável nesse estado, para nenhum papel.
+- **Decisão:** `proxy.ts` agora repassa o pathname atual como header (`x-invoke-path`) para os Server Components conseguirem saber qual rota está sendo renderizada sem duplicar um Client Component só para isso. O layout do painel lê esse header e, só quando `role === "owner"` e o pathname é exatamente `/painel/assinatura`, renderiza `{children}` normalmente mesmo bloqueado; qualquer outra rota continua mostrando a tela de bloqueio genérica. `getSubscriptionOverview` não depende do gate de assinatura (só de `requireTenantRole`), então funciona igual estando bloqueado ou não.
+- **Alternativas consideradas:** duplicar a checagem de acesso em cada página do painel (rejeitada: reintroduziria a chance de esquecer uma rota, e o gate já está centralizado no layout por design desde a Fase 2); usar um Client Component com `usePathname` só para essa checagem (rejeitada: adicionaria JS no cliente para uma decisão que o servidor já pode tomar sozinho com o header).
+- **Impacto:** `proxy.ts`, `app/(establishment)/painel/layout.tsx`. Nenhuma mudança de banco/contrato.
+- **Aprovado por:** leitura literal de docs/09 §10, que já era uma regra explícita não atendida antes desta fase.
+
 ## Modelo de nova entrada
 
 ```md

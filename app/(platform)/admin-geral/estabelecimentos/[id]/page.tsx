@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPlatformAdminContext } from "@/lib/auth/platform";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -6,6 +7,17 @@ import { formatMoney } from "@/lib/money";
 import { formatDateTimePtBr } from "@/lib/dates";
 import { INVOICE_STATUS_LABELS, SUBSCRIPTION_STATUS_LABELS } from "@/modules/billing/domain/labels";
 import { ConfirmPaymentForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/confirm-payment-form";
+import { EditEstablishmentForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/edit-establishment-form";
+import { MEMBER_ROLE_LABELS } from "@/modules/tenancy/domain/member-role-labels";
+import type { Database } from "@/lib/supabase/database-types";
+
+type TeamMember = {
+  id: string;
+  displayName: string;
+  email: string;
+  role: Database["public"]["Enums"]["member_role"];
+  isActive: boolean;
+};
 
 export const metadata: Metadata = {
   title: "Estabelecimento — Administração geral — iMenu",
@@ -22,7 +34,7 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
 
   const { data: establishment } = await supabase
     .from("establishments")
-    .select("id, trade_name, legal_name, is_active")
+    .select("id, trade_name, legal_name, document_number, email, phone, city, state_code, is_active")
     .eq("id", id)
     .maybeSingle();
 
@@ -42,12 +54,40 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
     .eq("establishment_id", id)
     .order("due_at", { ascending: false });
 
+  const { data: teamData } = await supabase.rpc("list_establishment_team", { p_establishment_id: id });
+  const team = (teamData as unknown as TeamMember[] | null) ?? [];
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-lg font-semibold text-neutral-950">{establishment.trade_name}</h1>
-        <p className="text-sm text-neutral-600">{establishment.legal_name}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-neutral-950">{establishment.trade_name}</h1>
+          <p className="text-sm text-neutral-600">{establishment.legal_name}</p>
+        </div>
+        <Link
+          href={`/admin-geral/auditoria?establishmentId=${id}`}
+          className="text-sm font-medium text-primary-700 hover:underline"
+        >
+          Ver auditoria deste estabelecimento
+        </Link>
       </div>
+
+      <section className="rounded-card border border-neutral-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-neutral-950">Cadastro</h2>
+        <EditEstablishmentForm
+          establishmentId={id}
+          establishment={{
+            legalName: establishment.legal_name,
+            tradeName: establishment.trade_name,
+            documentNumber: establishment.document_number,
+            email: establishment.email,
+            phone: establishment.phone,
+            city: establishment.city,
+            stateCode: establishment.state_code,
+            isActive: establishment.is_active,
+          }}
+        />
+      </section>
 
       <section className="rounded-card border border-neutral-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-neutral-950">Assinatura</h2>
@@ -101,6 +141,36 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
                 ) : null}
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-neutral-950">Equipe</h2>
+        {team.length === 0 ? (
+          <p className="text-sm text-neutral-600">Nenhum membro cadastrado ainda.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-card border border-neutral-200 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-600">
+                <tr>
+                  <th className="px-4 py-3">Nome</th>
+                  <th className="px-4 py-3">E-mail</th>
+                  <th className="px-4 py-3">Papel</th>
+                  <th className="px-4 py-3">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {team.map((member) => (
+                  <tr key={member.id} className="border-b border-neutral-200 last:border-0">
+                    <td className="px-4 py-3 text-neutral-950">{member.displayName}</td>
+                    <td className="px-4 py-3 text-neutral-700">{member.email}</td>
+                    <td className="px-4 py-3 text-neutral-700">{MEMBER_ROLE_LABELS[member.role]}</td>
+                    <td className="px-4 py-3 text-neutral-700">{member.isActive ? "Ativo" : "Desativado"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

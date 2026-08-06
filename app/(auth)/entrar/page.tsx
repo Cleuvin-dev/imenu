@@ -7,10 +7,24 @@ export const metadata: Metadata = {
   title: "Entrar — iMenu",
 };
 
-export default async function EntrarPage() {
+function safeNextPath(value: string | undefined): string | undefined {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return undefined;
+  }
+  return value;
+}
+
+export default async function EntrarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next: rawNext } = await searchParams;
+  const next = safeNextPath(rawNext);
+
   const user = await getAuthenticatedUser();
   if (user) {
-    redirect("/painel");
+    redirect(next ?? "/painel");
   }
 
   return (
@@ -21,7 +35,7 @@ export default async function EntrarPage() {
           <h1 className="text-xl font-semibold text-neutral-950">Entrar no painel</h1>
           <p className="text-sm text-neutral-600">Acesse com o e-mail e a senha da sua equipe.</p>
         </div>
-        <LoginForm />
+        <LoginForm next={next} />
       </div>
     </main>
   );

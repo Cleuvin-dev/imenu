@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getPublicEnv } from "@/lib/env";
+import { getPublicEnv } from "@/lib/env/public";
 import type { Database } from "@/lib/supabase/database-types";
 import {
   GUEST_SESSION_COOKIE,
@@ -17,7 +17,15 @@ import {
  * a renderização, então isso precisa acontecer aqui.
  */
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  // Repassa o pathname atual como header para que Server Components (ex.:
+  // app/(establishment)/painel/layout.tsx) saibam qual rota está sendo
+  // renderizada sem precisar de um Client Component só para isso — usado
+  // para liberar /painel/assinatura mesmo com o acesso operacional
+  // bloqueado (docs/09 §10 "owner: acesso limitado à tela de assinatura").
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-invoke-path", request.nextUrl.pathname);
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const env = getPublicEnv();
   const supabase = createServerClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
@@ -29,7 +37,7 @@ export async function proxy(request: NextRequest) {
         for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: requestHeaders } });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }

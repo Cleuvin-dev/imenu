@@ -1643,6 +1643,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_member_invite: { Args: { p_token_hash: string }; Returns: Json }
       close_table_session: {
         Args: { p_force?: boolean; p_table_service_session_id: string }
         Returns: Json
@@ -1683,6 +1684,10 @@ export type Database = {
         Args: { p_establishment_id: string }
         Returns: Json
       }
+      get_member_invite_preview: {
+        Args: { p_token_hash: string }
+        Returns: Json
+      }
       get_public_menu: {
         Args: { p_establishment_slug: string; p_table_token: string }
         Returns: Json
@@ -1706,6 +1711,27 @@ export type Database = {
       is_platform_admin: {
         Args: { allowed_roles?: Database["public"]["Enums"]["platform_role"][] }
         Returns: boolean
+      }
+      list_establishment_team: {
+        Args: { p_establishment_id: string }
+        Returns: Json
+      }
+      platform_bootstrap_establishment: {
+        Args: {
+          p_actor_user_id: string
+          p_city: string
+          p_document_number: string
+          p_email: string
+          p_legal_name: string
+          p_owner_user_id: string
+          p_phone: string
+          p_plan_id: string
+          p_slug: string
+          p_state_code: string
+          p_trade_name: string
+          p_trial_days?: number
+        }
+        Returns: Json
       }
       process_overdue_subscriptions: { Args: { p_now?: string }; Returns: Json }
       publish_product: { Args: { p_product_id: string }; Returns: Json }

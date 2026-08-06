@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { getPlatformAdminContext } from "@/lib/auth/platform";
 import { resolveActiveEstablishment } from "@/modules/tenancy/application/resolve-active-establishment";
@@ -102,6 +103,19 @@ export default async function PainelLayout({ children }: { children: React.React
   );
 
   if (!access.allowed) {
+    // Owner mantém acesso à tela de assinatura mesmo bloqueado (docs/09 §10:
+    // "acesso limitado à tela de assinatura, faturas... não pode contornar o
+    // bloqueio alterando URL" — só essa rota específica passa, nenhuma outra).
+    const pathname = (await headers()).get("x-invoke-path") ?? "";
+    if (establishment.role === "owner" && pathname === "/painel/assinatura") {
+      return (
+        <div className="flex min-h-full flex-1 flex-col">
+          {header}
+          <main className="flex flex-1 flex-col px-4 py-6 sm:px-6">{children}</main>
+        </div>
+      );
+    }
+
     return (
       <div className="flex min-h-full flex-1 flex-col">
         {header}
@@ -113,6 +127,9 @@ export default async function PainelLayout({ children }: { children: React.React
                 O acesso ao painel está bloqueado por uma pendência na assinatura. Veja abaixo a situação atual.
               </p>
               <OwnerBillingSummary establishmentId={establishment.establishmentId} />
+              <a href="/painel/assinatura" className="text-sm font-medium text-primary-700 underline underline-offset-2">
+                Ver assinatura e faturas completas
+              </a>
             </>
           ) : (
             <p className="max-w-md text-sm text-neutral-600">
