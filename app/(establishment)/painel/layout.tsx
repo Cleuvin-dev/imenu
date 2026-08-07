@@ -20,7 +20,10 @@ export const dynamic = "force-dynamic";
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthenticatedUser();
   if (!user) {
-    redirect("/entrar");
+    // Mesmo motivo do admin-geral/layout.tsx: preserva o destino original em
+    // vez de sempre cair no padrão /painel do formulário de login.
+    const pathname = (await headers()).get("x-invoke-path") ?? "/painel";
+    redirect(`/entrar?next=${encodeURIComponent(pathname)}`);
   }
 
   const resolution = await resolveActiveEstablishment();

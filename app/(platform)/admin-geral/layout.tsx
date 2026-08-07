@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { getPlatformAdminContext } from "@/lib/auth/platform";
 import { PLATFORM_ROLE_LABELS } from "@/modules/platform-admin/domain/platform-role-labels";
@@ -10,7 +11,11 @@ export const dynamic = "force-dynamic";
 export default async function AdminGeralLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthenticatedUser();
   if (!user) {
-    redirect("/entrar");
+    // Preserva o destino original (ex.: acessar /admin-geral/estabelecimentos
+    // direto pela URL sem sessão) para voltar exatamente para lá após o
+    // login, em vez de cair sempre no padrão /painel do formulário de login.
+    const pathname = (await headers()).get("x-invoke-path") ?? "/admin-geral";
+    redirect(`/entrar?next=${encodeURIComponent(pathname)}`);
   }
 
   const admin = await getPlatformAdminContext();

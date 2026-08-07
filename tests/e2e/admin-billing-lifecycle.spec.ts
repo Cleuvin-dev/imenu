@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { test, expect } from "@playwright/test";
-import { loginAsOwner, loginAsSuperAdmin, ESTABLISHMENT_SLUG } from "./helpers";
+import { loginAsOwner, loginAsSuperAdmin, decodeQrPngUrl, pathFromDecodedUrl } from "./helpers";
 
 function loadDotEnvLocal(): void {
   if (!existsSync(".env.local")) return;
@@ -41,6 +41,20 @@ test.describe("Ciclo de assinatura", () => {
     const periodStartDaysAgo = 40 + (Date.now() % 60);
     const periodStart = new Date(Date.now() - periodStartDaysAgo * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+    // Obter um token de mesa REAL antes de suspender: get_public_menu valida
+    // o token antes de checar a assinatura (supabase/migrations/..._get_public_menu_hours.sql),
+    // então um token inexistente sempre mostraria "QR Code inválido" (AC-PUB-002)
+    // em vez da mensagem de indisponibilidade que este teste quer cobrir
+    // (achado real ao rodar este cenário manualmente contra produção).
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await loginAsOwner(ownerPage);
+    await ownerPage.goto("/painel/mesas");
+    const qrHref = await ownerPage.locator('a[href*="/qr"]').first().getAttribute("href");
+    if (!qrHref) throw new Error("Nenhuma mesa com QR encontrada — pré-requisito do teste não atendido.");
+    const decoded = await decodeQrPngUrl(ownerPage, qrHref);
+    const publicPath = pathFromDecodedUrl(decoded);
+
     const adminContext = await browser.newContext();
     const adminPage = await adminContext.newPage();
     await loginAsSuperAdmin(adminPage);
@@ -66,9 +80,6 @@ test.describe("Ciclo de assinatura", () => {
     expect(cronResponse.ok()).toBeTruthy();
 
     // AC-SUB-001 — owner bloqueado operacionalmente, mas a assinatura continua acessível (docs/09 §10).
-    const ownerContext = await browser.newContext();
-    const ownerPage = await ownerContext.newPage();
-    await loginAsOwner(ownerPage);
     await ownerPage.goto("/painel");
     await expect(ownerPage.getByRole("heading", { name: "Acesso operacional indisponível" })).toBeVisible({
       timeout: 10_000,
@@ -77,7 +88,7 @@ test.describe("Ciclo de assinatura", () => {
     // AC-SUB-002 — consumidor não vê menção a inadimplência, e o cardápio/dados continuam existindo (mensagem neutra).
     const publicContext = await browser.newContext();
     const publicPage = await publicContext.newPage();
-    await publicPage.goto(`/m/${ESTABLISHMENT_SLUG}/t/qualquer-token-e2e`);
+    await publicPage.goto(publicPath);
     await expect(publicPage.getByRole("heading", { name: "Cardápio temporariamente indisponível" })).toBeVisible();
     await expect(publicPage.getByText(/inadimpl|atraso|vencid/i)).toHaveCount(0);
     await publicContext.close();
