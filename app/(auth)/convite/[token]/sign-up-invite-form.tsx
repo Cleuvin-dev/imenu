@@ -64,7 +64,7 @@ export function SignUpInviteForm({ token, email }: { token: string; email: strin
         />
         {state.fieldErrors?.password ? <p className="text-sm text-danger">{state.fieldErrors.password[0]}</p> : null}
       </div>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-neutral-600">
         Conta será criada com o e-mail <strong>{email}</strong>, o mesmo do convite.
       </p>
       {state.error ? (

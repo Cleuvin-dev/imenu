@@ -89,23 +89,23 @@ export function BillRequestClient({
       </div>
 
       <div className="rounded-card border border-neutral-200 bg-white p-4">
-        <p className="text-xs font-medium uppercase text-neutral-500">Total informativo</p>
+        <p className="text-xs font-medium uppercase text-neutral-600">Total informativo</p>
         <p className="mt-1 text-2xl font-semibold text-neutral-950">{formatMoney(status.session.totalCents)}</p>
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="mt-2 text-xs text-neutral-600">
           Valor calculado a partir dos pedidos desta mesa. Não é um comprovante fiscal.
         </p>
       </div>
 
       {billRequest ? (
         <div className="rounded-card border border-neutral-200 bg-white p-4" aria-live="polite">
-          <p className="text-xs font-medium uppercase text-neutral-500">Status da solicitação</p>
+          <p className="text-xs font-medium uppercase text-neutral-600">Status da solicitação</p>
           <p className="mt-1 text-lg font-semibold text-primary-700">
             {PUBLIC_BILL_REQUEST_STATUS_LABELS[billRequest.status]}
           </p>
           {billRequest.status === "canceled" && billRequest.cancellationReason ? (
             <p className="mt-2 text-sm text-neutral-600">Motivo: {billRequest.cancellationReason}</p>
           ) : null}
-          {billActive ? <p className="mt-2 text-xs text-neutral-500">Atualizando automaticamente…</p> : null}
+          {billActive ? <p className="mt-2 text-xs text-neutral-600">Atualizando automaticamente…</p> : null}
         </div>
       ) : null}
 

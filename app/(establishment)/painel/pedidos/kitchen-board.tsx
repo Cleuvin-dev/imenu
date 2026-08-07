@@ -128,6 +128,7 @@ export function KitchenBoard({
 
   return (
     <div className="flex flex-col gap-4">
+      <h1 className="text-lg font-semibold text-neutral-950">Pedidos</h1>
       <audio ref={audioRef} src="/sounds/new-order.wav" preload="auto" />
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-neutral-200 bg-white px-4 py-3">
@@ -210,7 +211,7 @@ export function KitchenBoard({
               </h2>
 
               {columnOrders.length === 0 ? (
-                <p className="text-xs text-neutral-500">Nenhum pedido aqui.</p>
+                <p className="text-xs text-neutral-600">Nenhum pedido aqui.</p>
               ) : (
                 columnOrders.map((order) => {
                   const isActiveColumn = column === "new" || column === "preparing" || column === "ready";
@@ -246,7 +247,7 @@ export function KitchenBoard({
                               </span>
                             ) : null}
                             {item.notes ? (
-                              <span className="block italic text-neutral-500">&ldquo;{item.notes}&rdquo;</span>
+                              <span className="block italic text-neutral-600">&ldquo;{item.notes}&rdquo;</span>
                             ) : null}
                           </li>
                         ))}

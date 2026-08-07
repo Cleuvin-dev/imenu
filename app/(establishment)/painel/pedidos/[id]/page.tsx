@@ -82,7 +82,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
                 {item.options.map((option) => `${option.group_name_snapshot}: ${option.option_name_snapshot}`).join(" · ")}
               </p>
             ) : null}
-            {item.notes ? <p className="text-xs italic text-neutral-500">&ldquo;{item.notes}&rdquo;</p> : null}
+            {item.notes ? <p className="text-xs italic text-neutral-600">&ldquo;{item.notes}&rdquo;</p> : null}
           </div>
         ))}
       </section>

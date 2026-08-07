@@ -78,7 +78,7 @@ export default async function AdminGeralPage() {
       </div>
 
       <div className="rounded-card border border-neutral-200 bg-white p-4">
-        <p className="text-xs text-neutral-500">Valor confirmado este mês</p>
+        <p className="text-xs text-neutral-600">Valor confirmado este mês</p>
         <p className="text-2xl font-semibold text-neutral-950">{formatMoney(summary.confirmedAmountCentsThisMonth)}</p>
       </div>
 

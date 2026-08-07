@@ -35,5 +35,14 @@ export async function createSupabaseServerClient() {
         }
       },
     },
+    global: {
+      // O Data Cache do Next.js intercepta fetch() em qualquer lugar do
+      // código do servidor, inclusive dentro do supabase-js — e pode
+      // memoizar uma leitura entre requisições mesmo em rotas dinâmicas
+      // (Data Cache é uma camada separada do Full Route Cache). Sem isso,
+      // qualquer leitura via este cliente pode devolver dado desatualizado
+      // logo após uma escrita (ver status/DECISION_LOG.md, D-039/D-041).
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
 }

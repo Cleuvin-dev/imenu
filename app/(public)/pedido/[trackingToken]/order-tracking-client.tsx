@@ -57,7 +57,7 @@ export function OrderTrackingClient({
       </div>
 
       <div className="rounded-card border border-neutral-200 bg-white p-4" aria-live="polite">
-        <p className="text-xs font-medium uppercase text-neutral-500">Status atual</p>
+        <p className="text-xs font-medium uppercase text-neutral-600">Status atual</p>
         <p className="mt-1 text-lg font-semibold text-primary-700">{statusLabel(order.status)}</p>
         {order.status === "rejected" && order.rejectionReason ? (
           <p className="mt-2 text-sm text-neutral-600">Motivo: {order.rejectionReason}</p>
@@ -65,7 +65,7 @@ export function OrderTrackingClient({
         {order.status === "canceled" && order.cancellationReason ? (
           <p className="mt-2 text-sm text-neutral-600">Motivo: {order.cancellationReason}</p>
         ) : null}
-        {!isTerminal ? <p className="mt-2 text-xs text-neutral-500">Atualizando automaticamente…</p> : null}
+        {!isTerminal ? <p className="mt-2 text-xs text-neutral-600">Atualizando automaticamente…</p> : null}
       </div>
 
       <div className="rounded-card border border-neutral-200 bg-white p-4">
@@ -80,9 +80,9 @@ export function OrderTrackingClient({
                 <span>{formatMoney(item.lineTotalCents)}</span>
               </div>
               {item.options.length > 0 ? (
-                <p className="text-xs text-neutral-500">{item.options.map((option) => option.optionName).join(", ")}</p>
+                <p className="text-xs text-neutral-600">{item.options.map((option) => option.optionName).join(", ")}</p>
               ) : null}
-              {item.notes ? <p className="text-xs italic text-neutral-500">&ldquo;{item.notes}&rdquo;</p> : null}
+              {item.notes ? <p className="text-xs italic text-neutral-600">&ldquo;{item.notes}&rdquo;</p> : null}
             </li>
           ))}
         </ul>

@@ -44,7 +44,7 @@ export default async function PlanosPage() {
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
                   <span className="flex items-center gap-2">
                     <span className="font-medium text-neutral-950">{plan.name}</span>
-                    <span className="text-xs text-neutral-500">({plan.code})</span>
+                    <span className="text-xs text-neutral-600">({plan.code})</span>
                     <span className="text-xs text-neutral-600">{formatMoney(plan.priceCents)}/mês</span>
                     {!plan.isActive ? (
                       <span className="rounded-chip bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">Inativo</span>

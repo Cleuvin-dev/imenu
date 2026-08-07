@@ -25,7 +25,14 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-invoke-path", request.nextUrl.pathname);
 
+  // Request ID de correlação entre logs estruturados (docs/13 §6). Aceita
+  // um valor já enviado (proxy/CDN à frente) para não quebrar rastreamento
+  // de ponta a ponta; gera um novo quando ausente.
+  const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
+  requestHeaders.set("x-request-id", requestId);
+
   let response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("x-request-id", requestId);
 
   const env = getPublicEnv();
   const supabase = createServerClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
@@ -38,6 +45,7 @@ export async function proxy(request: NextRequest) {
           request.cookies.set(name, value);
         }
         response = NextResponse.next({ request: { headers: requestHeaders } });
+        response.headers.set("x-request-id", requestId);
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }

@@ -38,7 +38,7 @@ export default async function AuditoriaPage({
       </div>
 
       {filters.establishmentId ? (
-        <p className="text-xs text-neutral-500">Filtrado por um estabelecimento específico.</p>
+        <p className="text-xs text-neutral-600">Filtrado por um estabelecimento específico.</p>
       ) : null}
 
       <form className="flex flex-wrap items-end gap-3 rounded-card border border-neutral-200 bg-white p-4">
@@ -88,14 +88,14 @@ export default async function AuditoriaPage({
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3">
                   <span className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="font-medium text-neutral-950">{auditActionLabel(log.action)}</span>
-                    <span className="text-xs text-neutral-500">{log.resourceType}</span>
+                    <span className="text-xs text-neutral-600">{log.resourceType}</span>
                     {log.establishmentTradeName ? (
                       <span className="rounded-chip bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
                         {log.establishmentTradeName}
                       </span>
                     ) : null}
                   </span>
-                  <span className="text-xs text-neutral-500">
+                  <span className="text-xs text-neutral-600">
                     {log.actorDisplayName ?? "Sistema"} · {formatDateTimePtBr(log.createdAt)}
                   </span>
                 </summary>
@@ -119,7 +119,7 @@ export default async function AuditoriaPage({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-neutral-500">Sem detalhes adicionais.</p>
+                    <p className="text-neutral-600">Sem detalhes adicionais.</p>
                   )}
                 </div>
               </details>

@@ -156,4 +156,19 @@ O script de seed formal (`docs/14_SEED_E_DEMONSTRACAO.md`) ainda não foi implem
 
 ### Estado da implementação
 
-Fases 0 a 8 do plano (`docs/12_PLANO_DE_IMPLEMENTACAO.md`) concluídas: fundação do repositório, identidade/tenancy/RLS, assinatura e gate de acesso, catálogo e mídias, mesas/QR e cardápio público, pedido transacional (criação real com preço recalculado no servidor, idempotência, máquina de estados e acompanhamento público), operação em tempo real (KDS/Realtime), conta e fechamento da mesa e administração completa (dashboards, equipe/convites, horários, assinatura, CRUD de estabelecimentos/planos, administradores da plataforma e auditoria). Falta a Fase 9 (robustez e entrega: testes P0 restantes, acessibilidade, performance, deploy staging, checklist manual). Detalhes completos, migrações aplicadas e pendências em `status/IMPLEMENTATION_STATUS.md`.
+Fases 0 a 9 do plano (`docs/12_PLANO_DE_IMPLEMENTACAO.md`): fundação do repositório, identidade/tenancy/RLS, assinatura e gate de acesso, catálogo e mídias, mesas/QR e cardápio público, pedido transacional (criação real com preço recalculado no servidor, idempotência, máquina de estados e acompanhamento público), operação em tempo real (KDS/Realtime), conta e fechamento da mesa, administração completa (dashboards, equipe/convites, horários, assinatura, CRUD de estabelecimentos/planos, administradores da plataforma e auditoria) e robustez/entrega (health checks, headers de segurança, logs estruturados, rate limit, testes E2E P0, acessibilidade com axe, baseline de performance, seed formal). Detalhes completos, migrações aplicadas e pendências externas (staging, service role key, domínio final) em `status/IMPLEMENTATION_STATUS.md`.
+
+### Testes end-to-end (Playwright)
+
+`npm run test:e2e` builda a aplicação e a serve localmente (`next build && next start`), depois roda os specs reais contra o servidor de dev + o projeto Supabase de desenvolvimento (`imenu-dev`) — nunca mockado. Como os testes compartilham o mesmo backend (sem banco isolado por execução), rodam sequencialmente (`workers: 1`).
+
+- `public-menu-browse.spec.ts`, `public-menu-accessibility.spec.ts`, `public-menu-performance.spec.ts` — cardápio público (viewport móvel).
+- `admin-catalog-publish.spec.ts`, `admin-table-qr-rotation.spec.ts`, `admin-tenant-isolation.spec.ts`, `admin-accessibility.spec.ts`, `admin-billing-lifecycle.spec.ts` — painéis administrativos (desktop). `admin-billing-lifecycle.spec.ts` é pulado automaticamente sem `SUPABASE_SERVICE_ROLE_KEY`.
+- `operations-order-flow.spec.ts`, `operations-bill-and-close.spec.ts` — fluxos operacionais ponta a ponta (desktop).
+
+Credenciais usadas pelos testes vêm de `E2E_OWNER_EMAIL`/`E2E_OWNER_PASSWORD`/`E2E_SUPERADMIN_EMAIL`/`E2E_SUPERADMIN_PASSWORD`/`E2E_ESTABLISHMENT_SLUG` (com defaults para as contas de demonstração já existentes em `imenu-dev`, ver `status/DECISION_LOG.md` D-026) — nunca versionadas.
+
+### Acessibilidade e performance
+
+- `public-menu-accessibility.spec.ts`/`admin-accessibility.spec.ts` rodam `@axe-core/playwright` nas rotas principais (público e administrativo) e falham em violações WCAG 2 AA `serious`/`critical`, além de cobrir navegação básica só por teclado (login, cardápio → carrinho, mesas → QR).
+- `public-menu-performance.spec.ts` registra um baseline real (LCP, payload de imagens) do cardápio público em vez de impor uma meta fixa num ambiente de desenvolvimento compartilhado (docs/11 §9) — ver o número mais recente em `status/IMPLEMENTATION_STATUS.md`.

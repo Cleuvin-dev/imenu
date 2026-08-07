@@ -138,14 +138,14 @@ export function ProductDetailClient({
 
         {product.ingredients.length > 0 ? (
           <div>
-            <h2 className="text-xs font-semibold uppercase text-neutral-500">Ingredientes</h2>
+            <h2 className="text-xs font-semibold uppercase text-neutral-600">Ingredientes</h2>
             <p className="text-sm text-neutral-700">{product.ingredients.join(", ")}</p>
           </div>
         ) : null}
 
         {product.allergens.length > 0 ? (
           <div>
-            <h2 className="text-xs font-semibold uppercase text-neutral-500">Alergênicos</h2>
+            <h2 className="text-xs font-semibold uppercase text-neutral-600">Alergênicos</h2>
             <p className="text-sm text-neutral-700">{product.allergens.join(", ")}</p>
           </div>
         ) : null}
@@ -166,7 +166,7 @@ export function ProductDetailClient({
           <fieldset key={group.id} className="flex flex-col gap-2 rounded-card border border-neutral-200 p-3">
             <legend className="px-1 text-sm font-medium text-neutral-950">
               {group.name}{" "}
-              <span className="text-xs font-normal text-neutral-500">
+              <span className="text-xs font-normal text-neutral-600">
                 ({group.minSelect > 0 ? `mín. ${group.minSelect}, ` : ""}máx. {group.maxSelect})
               </span>
             </legend>

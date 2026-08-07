@@ -42,21 +42,21 @@ export default async function AssinaturaPage() {
         <div className="rounded-card border border-neutral-200 bg-white p-4">
           <dl className="grid grid-cols-2 gap-4 text-sm text-neutral-700 sm:grid-cols-3">
             <div>
-              <dt className="text-xs text-neutral-500">Plano</dt>
+              <dt className="text-xs text-neutral-600">Plano</dt>
               <dd className="font-medium text-neutral-950">{subscription.plan?.name ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-xs text-neutral-500">Status</dt>
+              <dt className="text-xs text-neutral-600">Status</dt>
               <dd className="font-medium text-neutral-950">{SUBSCRIPTION_STATUS_LABELS[subscription.status]}</dd>
             </div>
             <div>
-              <dt className="text-xs text-neutral-500">Valor mensal</dt>
+              <dt className="text-xs text-neutral-600">Valor mensal</dt>
               <dd className="font-medium text-neutral-950">
                 {subscription.plan ? formatMoney(subscription.plan.priceCents) : "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-neutral-500">Período atual</dt>
+              <dt className="text-xs text-neutral-600">Período atual</dt>
               <dd className="font-medium text-neutral-950">
                 {subscription.currentPeriodStart ? formatDateTimePtBr(subscription.currentPeriodStart) : "—"} até{" "}
                 {subscription.currentPeriodEnd ? formatDateTimePtBr(subscription.currentPeriodEnd) : "—"}
@@ -64,13 +64,13 @@ export default async function AssinaturaPage() {
             </div>
             {subscription.trialEndsAt ? (
               <div>
-                <dt className="text-xs text-neutral-500">Teste até</dt>
+                <dt className="text-xs text-neutral-600">Teste até</dt>
                 <dd className="font-medium text-neutral-950">{formatDateTimePtBr(subscription.trialEndsAt)}</dd>
               </div>
             ) : null}
             {subscription.graceUntil ? (
               <div>
-                <dt className="text-xs text-neutral-500">Prazo adicional até</dt>
+                <dt className="text-xs text-neutral-600">Prazo adicional até</dt>
                 <dd className="font-medium text-neutral-950">{formatDateTimePtBr(subscription.graceUntil)}</dd>
               </div>
             ) : null}
@@ -92,7 +92,7 @@ export default async function AssinaturaPage() {
         ) : (
           <div className="overflow-x-auto rounded-card border border-neutral-200 bg-white">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-neutral-200 text-xs text-neutral-500">
+              <thead className="border-b border-neutral-200 text-xs text-neutral-600">
                 <tr>
                   <th className="px-4 py-2 font-medium">Período</th>
                   <th className="px-4 py-2 font-medium">Valor</th>
@@ -121,7 +121,7 @@ export default async function AssinaturaPage() {
         )}
       </div>
 
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-neutral-600">
         Para alterar plano, confirmar pagamento ou negociar prazos, fale com o suporte do iMenu.
       </p>
     </div>

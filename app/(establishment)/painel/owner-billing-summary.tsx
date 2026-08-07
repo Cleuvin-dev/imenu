@@ -31,11 +31,11 @@ export async function OwnerBillingSummary({ establishmentId }: { establishmentId
         {subscription ? (
           <dl className="mt-2 grid grid-cols-2 gap-3 text-sm text-neutral-700">
             <div>
-              <dt className="text-xs text-neutral-500">Plano</dt>
+              <dt className="text-xs text-neutral-600">Plano</dt>
               <dd>{subscription.plan?.name ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-xs text-neutral-500">Status</dt>
+              <dt className="text-xs text-neutral-600">Status</dt>
               <dd>{SUBSCRIPTION_STATUS_LABELS[subscription.status]}</dd>
             </div>
           </dl>

@@ -243,3 +243,16 @@ Quando implementada:
 - nunca confiar apenas no estado enviado sem verificar quando o provider permitir;
 - mapear evento externo para fatura/pagamento/assinatura;
 - auditar.
+
+## 12. Estado real da implementação (registrado na Fase 9)
+
+As seções 2–4 acima descrevem o desenho de referência do contrato. Na implementação real, a maior parte das mutações autenticadas (estabelecimento e admin geral) usa **Server Actions** por módulo, não uma API REST literal — permitido explicitamente pela seção 3 ("desde que os mesmos serviços e validações sustentem testes e segurança"), e é o padrão seguido em todas as fases (1–8). As únicas rotas HTTP (`app/api/**/route.ts`) que existem de fato são:
+
+- `POST /api/public/orders`, `GET /api/public/orders/{trackingToken}` — conforme seção 2.
+- `POST /api/public/bill-requests`, `GET /api/public/bill-requests/{tableToken}` — conforme seção 2.
+- `GET /api/establishments/mesas/{tableId}/qr?format=png|svg` — download do QR (equivalente ao `GET /tables/{id}/qr` da seção 3; `export const dynamic = "force-dynamic"` obrigatório nesta rota e em qualquer rota futura que leia token/estado rotativo — ver `status/DECISION_LOG.md`, D-039/D-041).
+- `POST /api/internal/cron/process-overdue-subscriptions` — conforme seção 4.
+- `GET /api/health/live`, `GET /api/health/ready` — health checks (docs/13 §7), não fazem parte do contrato de negócio.
+- `POST /api/internal/log-client-error` — recebe erros não tratados do cliente (`app/global-error.tsx`), rate-limited, nunca expõe detalhes ao usuário final.
+
+Toda mutação/consulta que a seção 3/4 descreve como REST (`categories`, `products`, `tables`, `members`, `invites`, `establishments`, `plans`, `admins`, `audit` etc.) é servida por Server Actions dentro de `app/(establishment)/painel/**/actions.ts` e `app/(platform)/admin-geral/**/actions.ts`, chamando os mesmos serviços de `modules/*/application/` que sustentam os testes de integração (`supabase/tests/*.sql`) e a autorização server-side. Os códigos de erro da seção 5 e os limites da seção 9 são os efetivamente usados por essas Server Actions e rotas, sem divergência.

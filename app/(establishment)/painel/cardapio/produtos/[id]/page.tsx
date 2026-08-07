@@ -121,7 +121,7 @@ export default async function ProdutoEditorPage({ params }: { params: Promise<{ 
               defaultValue={product.base_price_cents}
               className="rounded-control border border-neutral-200 px-3 py-2 text-sm"
             />
-            <span className="text-xs text-neutral-500">{formatMoney(product.base_price_cents)}</span>
+            <span className="text-xs text-neutral-600">{formatMoney(product.base_price_cents)}</span>
           </div>
           <div className="flex flex-col gap-1 sm:col-span-2">
             <label className="text-xs font-medium text-neutral-950">Descrição curta</label>

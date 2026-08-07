@@ -160,7 +160,7 @@ export function CaixaBoard({
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-neutral-950">Solicitações de conta</h2>
         {activeBillRequests.length === 0 ? (
-          <p className="text-xs text-neutral-500">Nenhuma solicitação ativa.</p>
+          <p className="text-xs text-neutral-600">Nenhuma solicitação ativa.</p>
         ) : (
           activeBillRequests.map((bill) => {
             const minutes = now ? minutesSince(bill.requested_at, now) : 0;
@@ -197,7 +197,7 @@ export function CaixaBoard({
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-neutral-950">Mesas abertas</h2>
         {board.openSessions.length === 0 ? (
-          <p className="text-xs text-neutral-500">Nenhuma mesa com sessão aberta.</p>
+          <p className="text-xs text-neutral-600">Nenhuma mesa com sessão aberta.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {board.openSessions.map((session) => (

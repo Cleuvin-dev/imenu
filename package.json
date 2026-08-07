@@ -28,6 +28,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "1.62.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "7.0.0",
@@ -40,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "jsdom": "30.0.1",
+    "jsqr": "^1.4.0",
     "prettier": "3.9.6",
     "supabase": "2.110.0",
     "tailwindcss": "^4",

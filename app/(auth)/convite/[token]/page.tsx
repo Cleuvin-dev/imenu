@@ -43,7 +43,7 @@ export default async function ConvitePage({ params }: { params: Promise<{ token:
           <p className="text-sm text-neutral-600">
             Papel: {MEMBER_ROLE_LABELS[preview.role]}
           </p>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-neutral-600">
             E-mail convidado: <strong>{preview.email}</strong> · expira em {formatDateTimePtBr(preview.expiresAt)}
           </p>
         </div>
@@ -53,7 +53,7 @@ export default async function ConvitePage({ params }: { params: Promise<{ token:
         ) : (
           <div className="flex flex-col gap-6">
             <SignUpInviteForm token={token} email={preview.email} />
-            <div className="flex items-center gap-3 text-xs text-neutral-500">
+            <div className="flex items-center gap-3 text-xs text-neutral-600">
               <span className="h-px flex-1 bg-neutral-200" />
               já tem conta?
               <span className="h-px flex-1 bg-neutral-200" />

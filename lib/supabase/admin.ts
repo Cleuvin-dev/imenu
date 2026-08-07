@@ -24,5 +24,11 @@ export function createSupabaseAdminClient() {
       autoRefreshToken: false,
       persistSession: false,
     },
+    global: {
+      // Mesmo motivo do cliente de servidor (lib/supabase/server.ts): o
+      // Data Cache do Next.js pode memoizar fetch() feito pelo supabase-js
+      // entre requisições e devolver dado desatualizado (ver D-039/D-041).
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
 }

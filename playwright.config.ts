@@ -2,7 +2,16 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  // Estes testes rodam contra um backend real e compartilhado (imenu-dev),
+  // não um banco isolado por teste — criar um projeto Supabase efêmero por
+  // execução exigiria SUPABASE_SERVICE_ROLE_KEY, que continua bloqueada
+  // (status/IMPLEMENTATION_STATUS.md). Paralelismo real faria testes
+  // pisarem nos dados uns dos outros (ex.: o teste de assinatura suspende
+  // temporariamente o mesmo tenant que os testes de pedido/catálogo
+  // precisam ativo). `workers: 1` força execução sequencial de ponta a
+  // ponta até existir isolamento por execução.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: [["html", { open: "never" }]],

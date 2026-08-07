@@ -147,7 +147,7 @@ export function CartClient({
                 {item.optionNames.length > 0 ? (
                   <p className="text-xs text-neutral-600">{item.optionNames.join(", ")}</p>
                 ) : null}
-                {item.notes ? <p className="text-xs italic text-neutral-500">&ldquo;{item.notes}&rdquo;</p> : null}
+                {item.notes ? <p className="text-xs italic text-neutral-600">&ldquo;{item.notes}&rdquo;</p> : null}
               </div>
               <p className="font-semibold text-neutral-950">{formatMoney(item.unitPriceCents * item.quantity)}</p>
             </div>
@@ -188,7 +188,7 @@ export function CartClient({
           <span>Subtotal</span>
           <span className="font-semibold text-neutral-950">{formatMoney(subtotal)}</span>
         </div>
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="mt-2 text-xs text-neutral-600">
           O pagamento é feito diretamente com a equipe do estabelecimento, fora do iMenu. Este total é apenas
           informativo e pode ser recalculado pelo servidor ao confirmar.
         </p>

@@ -3,11 +3,40 @@
 import { revalidatePath } from "next/cache";
 import { AppError, type AppErrorFieldErrors } from "@/lib/errors/app-error";
 import { confirmInvoicePayment } from "@/modules/billing/application/confirm-invoice-payment";
+import { createInvoice } from "@/modules/billing/application/create-invoice";
 import { updateEstablishment } from "@/modules/platform-admin/application/update-establishment";
 
 export type ConfirmPaymentActionState = {
   error?: string;
 };
+
+export type CreateInvoiceActionState = {
+  error?: string;
+  fieldErrors?: AppErrorFieldErrors;
+};
+
+export async function createInvoiceAction(
+  establishmentId: string,
+  _prevState: CreateInvoiceActionState,
+  formData: FormData,
+): Promise<CreateInvoiceActionState> {
+  try {
+    await createInvoice(establishmentId, {
+      referencePeriodStart: formData.get("referencePeriodStart"),
+      referencePeriodEnd: formData.get("referencePeriodEnd"),
+      amountCents: formData.get("amountCents"),
+      dueAt: formData.get("dueAt"),
+    });
+  } catch (err) {
+    if (err instanceof AppError) {
+      return { error: err.message, fieldErrors: err.fieldErrors };
+    }
+    return { error: "Não foi possível criar a fatura." };
+  }
+
+  revalidatePath(`/admin-geral/estabelecimentos/${establishmentId}`);
+  return {};
+}
 
 export type UpdateEstablishmentActionState = {
   error?: string;

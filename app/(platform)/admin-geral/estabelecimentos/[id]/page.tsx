@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/money";
 import { formatDateTimePtBr } from "@/lib/dates";
 import { INVOICE_STATUS_LABELS, SUBSCRIPTION_STATUS_LABELS } from "@/modules/billing/domain/labels";
 import { ConfirmPaymentForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/confirm-payment-form";
+import { CreateInvoiceForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/create-invoice-form";
 import { EditEstablishmentForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/edit-establishment-form";
 import { MEMBER_ROLE_LABELS } from "@/modules/tenancy/domain/member-role-labels";
 import type { Database } from "@/lib/supabase/database-types";
@@ -94,19 +95,19 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
         {subscription ? (
           <dl className="mt-2 grid grid-cols-2 gap-3 text-sm text-neutral-700 sm:grid-cols-4">
             <div>
-              <dt className="text-xs text-neutral-500">Plano</dt>
+              <dt className="text-xs text-neutral-600">Plano</dt>
               <dd>{subscription.plan?.name ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-xs text-neutral-500">Status</dt>
+              <dt className="text-xs text-neutral-600">Status</dt>
               <dd>{SUBSCRIPTION_STATUS_LABELS[subscription.status]}</dd>
             </div>
             <div>
-              <dt className="text-xs text-neutral-500">Período atual até</dt>
+              <dt className="text-xs text-neutral-600">Período atual até</dt>
               <dd>{subscription.current_period_end ? formatDateTimePtBr(subscription.current_period_end) : "—"}</dd>
             </div>
             <div>
-              <dt className="text-xs text-neutral-500">Prazo adicional até</dt>
+              <dt className="text-xs text-neutral-600">Prazo adicional até</dt>
               <dd>{subscription.grace_until ? formatDateTimePtBr(subscription.grace_until) : "—"}</dd>
             </div>
           </dl>
@@ -117,6 +118,7 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-neutral-950">Faturas</h2>
+        <CreateInvoiceForm establishmentId={id} />
         {!invoices || invoices.length === 0 ? (
           <p className="text-sm text-neutral-600">Nenhuma fatura emitida ainda.</p>
         ) : (
