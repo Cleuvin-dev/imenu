@@ -1,6 +1,6 @@
 # Status de implementação — iMenu MVP
 
-**Atualizado em:** 07/08/2026 (`SUPABASE_SERVICE_ROLE_KEY` configurada pelo responsável, local e Vercel; RF-ADM-014 — cadastro direto de admin de plataforma —, RF-ADM-010 — suspensão/reativação manual de estabelecimento — mais redefinir senha/excluir administrador (commit `bee2882`, já publicado em produção), e login único em `/entrar` com destino pós-login definido pelo papel do usuário (D-047). Ver seções "RF-ADM-014", "RF-ADM-010" e "Login único" abaixo. Sessão anterior, 06/08/2026: Fase 9 CONCLUÍDA e commitada/publicada — ver seção "Verificação ao vivo em produção" abaixo).  
+**Atualizado em:** 07/08/2026 (sessão encerrada aqui a pedido do responsável, tudo commitado e publicado — ver seção "Onde retomar (07/08/2026)" no final do arquivo para o ponto exato de continuação. `SUPABASE_SERVICE_ROLE_KEY` configurada pelo responsável, local e Vercel; RF-ADM-014 — cadastro direto de admin de plataforma —, RF-ADM-010 — suspensão/reativação manual de estabelecimento — mais redefinir senha/excluir administrador (commit `bee2882`), e login único em `/entrar` com destino pós-login definido pelo papel do usuário (commit `251202c`, D-047). Ambos publicados e verificados ao vivo em `https://imenu-nu.vercel.app`. Ver seções "RF-ADM-014", "RF-ADM-010" e "Login único" abaixo. Sessão anterior, 06/08/2026: Fase 9 CONCLUÍDA e commitada/publicada — ver seção "Verificação ao vivo em produção" abaixo).  
 **Estado inicial:** documentação concluída; implementação ainda não iniciada.
 
 ## Como atualizar
@@ -558,5 +558,24 @@ O responsável pediu, dentro de Administração geral, poder redefinir a senha d
 O responsável pediu que `/entrar` reconheça automaticamente se quem logou é admin de plataforma ou equipe de estabelecimento, sem precisar de URLs diferentes por perfil (antes, o padrão pós-login sem `?next=` era sempre `/painel`, mesmo para admin de plataforma — foi o que causou o "não vi o botão" de uma mensagem anterior: a conta chegava em `/painel`, não em `/admin-geral`). Ver D-047.
 
 - Novo helper `resolveDefaultLandingPath()` (`lib/auth/platform.ts`): `/admin-geral` para quem tem registro ativo em `platform_admins`, `/painel` para o resto. Usado em `loginAction` e em `EntrarPage` (caso de sessão já ativa acessando `/entrar` direto). Só atua quando não há `?next=` explícito — o redirect de rota protegida (D-043) continua tendo prioridade e funcionando sem alteração.
-- **Verificação:** `npm run lint`, `npm run typecheck`, `npm test` (80/80) e `npm run build` passaram. Testado ao vivo em navegador contra `imenu-dev` real: `superadmin@imenu.demo` (admin de plataforma, sem vínculo de estabelecimento) cai em `/admin-geral`; `owner-cantina@imenu.demo` continua caindo em `/painel`; acesso a `/admin-geral/administradores` sem sessão redireciona para `/entrar?next=...` e volta exatamente para lá após o login. **Ainda não commitado** ao final desta sessão.
+- **Verificação:** `npm run lint`, `npm run typecheck`, `npm test` (80/80) e `npm run build` passaram. Testado ao vivo em navegador contra `imenu-dev` real: `superadmin@imenu.demo` (admin de plataforma, sem vínculo de estabelecimento) cai em `/admin-geral`; `owner-cantina@imenu.demo` continua caindo em `/painel`; acesso a `/admin-geral/administradores` sem sessão redireciona para `/entrar?next=...` e volta exatamente para lá após o login.
+- **Commitado e publicado (07/08/2026):** commit `251202c` ("Login unico em /entrar direciona pelo papel do usuario...") enviado para `origin/main`, deploy automático confirmado no ar. Reverificado ao vivo em `https://imenu-nu.vercel.app` após o deploy (mesmos dois cenários de login, mesmo resultado) e depois confirmado manualmente pelo responsável ("testei e deu certo").
+
+## Onde retomar (07/08/2026)
+
+- **Repositório:** tudo commitado e publicado em `origin/main`, HEAD em `251202c` (em cima de `bee2882`, `43a09f0`). Working tree limpo. Deploy correspondente confirmado `Ready` em produção (`https://imenu-nu.vercel.app`).
+- **O que foi concluído nesta sessão (07/08/2026), em ordem:**
+  1. Diagnóstico do porquê não existia cadastro de admin/estabelecimento visível no painel (resposta: fluxo existia mas exigia conta prévia — ver início da sessão).
+  2. RF-ADM-014 — `addPlatformAdmin` passou a criar a conta (com senha temporária) quando o e-mail ainda não existe, em vez de recusar. Migração `20260807090000_platform_grant_admin_role.sql`.
+  3. RF-ADM-010 — suspensão/reativação manual de estabelecimento com motivo (pendência desde D-036, agora implementada). Migrações `20260807110000`/`20260807110001` (a segunda é corretiva — achado de segurança real, função ficou executável por `anon` por um instante, corrigido antes de qualquer uso).
+  4. Redefinir senha (admin de plataforma e membro de estabelecimento) e excluir administrador de plataforma — tudo com auditoria.
+  5. Conta real `orbixinovacao@gmail.com` criada como `super_admin` a pedido do responsável (D-046); senha trocada depois para uma mais forte, também a pedido.
+  6. Login único: `/entrar` agora direciona pelo papel do usuário sem precisar de URLs diferentes (D-047).
+  7. Dois commits publicados e verificados ao vivo em produção: `bee2882` e `251202c`.
+- **Bloqueios externos residuais** (nenhum novo nesta sessão, os mesmos de antes): domínio final, projeto Supabase de staging (D-040) e de produção exclusivo, valores comerciais dos planos reais, e-mail transacional, leaked password protection, confirmação de e-mail no Supabase Auth do `imenu-dev`, backup/rollback formal — ver tabela "Bloqueios externos" e checklist do DoD mais acima no arquivo.
+- **Pendências técnicas menores, não bloqueantes:**
+  - `npm run test:e2e` não foi rerodado nesta sessão para as funcionalidades novas (nenhuma spec cobre RF-ADM-010/RF-ADM-014/login único ainda) — considerar escrever specs dedicadas se/quando fizer sentido.
+  - `.gitignore` ganhou `.vercel` e `.env*` (efeito colateral de `vercel link`, já commitado junto do commit `251202c` — mudança segura, não precisa de ação).
+  - Vercel CLI (`vercel`) foi instalado globalmente nesta sessão e já está autenticado/linkado ao projeto (`cleuvin-9397s-projects/imenu`) — disponível para a próxima sessão sem precisar reinstalar.
+- **Próximo trabalho sugerido:** nenhuma tarefa pendente explícita do responsável no momento da pausa. Ao retomar, perguntar o que ele quer priorizar (pode ser desbloqueio de pendências externas, cobertura E2E das funcionalidades novas, ou uma nova funcionalidade).
 
