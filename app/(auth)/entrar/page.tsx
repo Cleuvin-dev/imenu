@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth/session";
+import { resolveDefaultLandingPath } from "@/lib/auth/platform";
 import { LoginForm } from "@/app/(auth)/entrar/login-form";
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export default async function EntrarPage({
 
   const user = await getAuthenticatedUser();
   if (user) {
-    redirect(next ?? "/painel");
+    redirect(next ?? (await resolveDefaultLandingPath()));
   }
 
   return (

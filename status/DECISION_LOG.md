@@ -404,6 +404,15 @@ Não sobrescrever decisões. Adicionar uma entrada contendo:
 - **Impacto:** conta ativa em `imenu-dev` com risco de segurança real até a senha ser trocada. Recomendado ao responsável trocar a senha assim que possível.
 - **Aprovado por:** pedido explícito e direto do responsável, com o risco sinalizado antes da execução.
 
+## D-047 — `/entrar` passa a ser porta única de login, com destino pós-login definido pelo papel do usuário
+
+- **Data:** 07/08/2026
+- **Contexto:** o responsável notou que `/entrar` sempre levava a `/painel` por padrão (D-011), obrigando quem tem conta de admin de plataforma a saber de cor que precisa ir depois para `/admin-geral` manualmente. Pediu uma única tela de login que reconheça automaticamente o tipo de conta e direcione ao lugar certo, sem precisar de URLs diferentes por perfil.
+- **Decisão:** novo helper `resolveDefaultLandingPath()` (`lib/auth/platform.ts`) consulta `platform_admins` (via `getPlatformAdminContext`, já existente) e devolve `/admin-geral` para quem tem registro ativo lá, `/painel` para todo o resto (equipe de estabelecimento). Usado em dois pontos: `loginAction` (`app/(auth)/entrar/actions.ts`, pós-submit do formulário) e `EntrarPage` (`app/(auth)/entrar/page.tsx`, quando alguém já autenticado acessa `/entrar` direto). Em ambos, só entra em ação quando **não há** `?next=` explícito — o redirect de rota protegida (`/admin-geral/x` sem sessão → `/entrar?next=/admin-geral/x` → volta exatamente para `/admin-geral/x` após login, fix de D-043) continua funcionando sem alteração, porque um `next` explícito sempre tem prioridade.
+- **Alternativas consideradas:** middleware/proxy decidindo o destino — rejeitada por já existir um padrão estabelecido (`getPlatformAdminContext`) em Server Component/Server Action, mais simples e sem duplicar a consulta de papel que o próprio layout de `/admin-geral` já faz.
+- **Impacto:** `lib/auth/platform.ts`, `app/(auth)/entrar/actions.ts`, `app/(auth)/entrar/page.tsx`. Nenhuma mudança de banco/contrato. Verificado ao vivo em navegador contra `imenu-dev` real: admin de plataforma sem vínculo de estabelecimento (`superadmin@imenu.demo`) cai em `/admin-geral`; owner de estabelecimento (`owner-cantina@imenu.demo`) continua caindo em `/painel`; acesso a rota protegida sem sessão continua voltando exatamente para a rota originalmente pedida após o login.
+- **Aprovado por:** pedido explícito do responsável.
+
 ## Modelo de nova entrada
 
 ```md

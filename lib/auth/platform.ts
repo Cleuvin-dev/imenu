@@ -50,3 +50,14 @@ export async function getPlatformAdminContext(
     return null;
   }
 }
+
+/**
+ * Destino padrão pós-login quando não há `?next=` explícito: administrador
+ * de plataforma cai em `/admin-geral`, qualquer outro usuário autenticado
+ * (equipe de estabelecimento) cai em `/painel`. Mesma tela de login
+ * (`/entrar`) serve os dois públicos sem exigir URLs diferentes.
+ */
+export async function resolveDefaultLandingPath(requestId: string = crypto.randomUUID()): Promise<string> {
+  const admin = await getPlatformAdminContext(requestId);
+  return admin ? "/admin-geral" : "/painel";
+}
