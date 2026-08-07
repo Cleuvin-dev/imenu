@@ -5,6 +5,8 @@ import { AppError, type AppErrorFieldErrors } from "@/lib/errors/app-error";
 import { confirmInvoicePayment } from "@/modules/billing/application/confirm-invoice-payment";
 import { createInvoice } from "@/modules/billing/application/create-invoice";
 import { updateEstablishment } from "@/modules/platform-admin/application/update-establishment";
+import { suspendEstablishment, reactivateEstablishment } from "@/modules/platform-admin/application/suspend-establishment";
+import { resetEstablishmentMemberPassword } from "@/modules/platform-admin/application/reset-member-password";
 
 export type ConfirmPaymentActionState = {
   error?: string;
@@ -69,6 +71,73 @@ export async function updateEstablishmentAction(
   revalidatePath(`/admin-geral/estabelecimentos/${establishmentId}`);
   revalidatePath("/admin-geral/estabelecimentos");
   return {};
+}
+
+export type SuspendEstablishmentActionState = {
+  error?: string;
+  fieldErrors?: AppErrorFieldErrors;
+};
+
+export async function suspendEstablishmentAction(
+  establishmentId: string,
+  _prevState: SuspendEstablishmentActionState,
+  formData: FormData,
+): Promise<SuspendEstablishmentActionState> {
+  try {
+    await suspendEstablishment(establishmentId, { reason: formData.get("reason") });
+  } catch (err) {
+    if (err instanceof AppError) {
+      return { error: err.message, fieldErrors: err.fieldErrors };
+    }
+    return { error: "Não foi possível suspender o estabelecimento." };
+  }
+
+  revalidatePath(`/admin-geral/estabelecimentos/${establishmentId}`);
+  revalidatePath("/admin-geral/estabelecimentos");
+  return {};
+}
+
+export type ReactivateEstablishmentActionState = {
+  error?: string;
+};
+
+export async function reactivateEstablishmentAction(
+  establishmentId: string,
+  _prevState: ReactivateEstablishmentActionState,
+): Promise<ReactivateEstablishmentActionState> {
+  try {
+    await reactivateEstablishment(establishmentId);
+  } catch (err) {
+    if (err instanceof AppError) {
+      return { error: err.message };
+    }
+    return { error: "Não foi possível reativar o estabelecimento." };
+  }
+
+  revalidatePath(`/admin-geral/estabelecimentos/${establishmentId}`);
+  revalidatePath("/admin-geral/estabelecimentos");
+  return {};
+}
+
+export type ResetMemberPasswordActionState = {
+  error?: string;
+  temporaryPassword?: string;
+};
+
+export async function resetMemberPasswordAction(
+  establishmentId: string,
+  userId: string,
+  _prevState: ResetMemberPasswordActionState,
+): Promise<ResetMemberPasswordActionState> {
+  try {
+    const result = await resetEstablishmentMemberPassword(establishmentId, userId);
+    return { temporaryPassword: result.temporaryPassword };
+  } catch (err) {
+    if (err instanceof AppError) {
+      return { error: err.message };
+    }
+    return { error: "Não foi possível redefinir a senha." };
+  }
 }
 
 export async function confirmPaymentAction(

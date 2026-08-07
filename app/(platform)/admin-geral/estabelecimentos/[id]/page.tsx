@@ -9,11 +9,14 @@ import { INVOICE_STATUS_LABELS, SUBSCRIPTION_STATUS_LABELS } from "@/modules/bil
 import { ConfirmPaymentForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/confirm-payment-form";
 import { CreateInvoiceForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/create-invoice-form";
 import { EditEstablishmentForm } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/edit-establishment-form";
+import { SuspensionControl } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/suspension-control";
+import { MemberResetPasswordButton } from "@/app/(platform)/admin-geral/estabelecimentos/[id]/member-reset-password-button";
 import { MEMBER_ROLE_LABELS } from "@/modules/tenancy/domain/member-role-labels";
 import type { Database } from "@/lib/supabase/database-types";
 
 type TeamMember = {
   id: string;
+  userId: string;
   displayName: string;
   email: string;
   role: Database["public"]["Enums"]["member_role"];
@@ -35,7 +38,9 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
 
   const { data: establishment } = await supabase
     .from("establishments")
-    .select("id, trade_name, legal_name, document_number, email, phone, city, state_code, is_active")
+    .select(
+      "id, trade_name, legal_name, document_number, email, phone, city, state_code, is_active, manual_suspended_at, manual_suspension_reason",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -72,6 +77,19 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
           Ver auditoria deste estabelecimento
         </Link>
       </div>
+
+      <section className="rounded-card border border-neutral-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-neutral-950">Suspensão manual</h2>
+        <p className="mb-3 text-xs text-neutral-600">
+          Bloqueia o acesso ao painel e ao cardápio público sem apagar nenhum dado (produtos, pedidos, faturas e
+          histórico continuam intactos). Reversível a qualquer momento.
+        </p>
+        <SuspensionControl
+          establishmentId={id}
+          manualSuspendedAt={establishment.manual_suspended_at}
+          manualSuspensionReason={establishment.manual_suspension_reason}
+        />
+      </section>
 
       <section className="rounded-card border border-neutral-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-neutral-950">Cadastro</h2>
@@ -160,6 +178,7 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
                   <th className="px-4 py-3">E-mail</th>
                   <th className="px-4 py-3">Papel</th>
                   <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -169,6 +188,9 @@ export default async function EstabelecimentoDetailPage({ params }: { params: Pr
                     <td className="px-4 py-3 text-neutral-700">{member.email}</td>
                     <td className="px-4 py-3 text-neutral-700">{MEMBER_ROLE_LABELS[member.role]}</td>
                     <td className="px-4 py-3 text-neutral-700">{member.isActive ? "Ativo" : "Desativado"}</td>
+                    <td className="px-4 py-3">
+                      <MemberResetPasswordButton establishmentId={id} userId={member.userId} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

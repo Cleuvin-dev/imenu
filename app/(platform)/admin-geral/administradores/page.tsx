@@ -5,6 +5,8 @@ import { PLATFORM_ROLE_LABELS } from "@/modules/platform-admin/domain/platform-r
 import { formatDateTimePtBr } from "@/lib/dates";
 import { AddAdminForm } from "@/app/(platform)/admin-geral/administradores/add-admin-form";
 import { updateAdminRoleAction, setAdminActiveAction } from "@/app/(platform)/admin-geral/administradores/actions";
+import { ResetPasswordButton } from "@/app/(platform)/admin-geral/administradores/reset-password-button";
+import { DeleteAdminButton } from "@/app/(platform)/admin-geral/administradores/delete-admin-button";
 
 export const metadata: Metadata = {
   title: "Administradores — Administração geral — iMenu",
@@ -73,6 +75,8 @@ export default async function AdministradoresPage() {
                   {item.isActive ? "Desativar" : "Reativar"}
                 </button>
               </form>
+              <ResetPasswordButton userId={item.userId} />
+              <DeleteAdminButton userId={item.userId} displayName={item.displayName} />
             </div>
           </li>
         ))}

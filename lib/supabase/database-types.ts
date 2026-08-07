@@ -1733,6 +1733,25 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_reactivate_establishment: {
+        Args: { p_establishment_id: string }
+        Returns: undefined
+      }
+      platform_suspend_establishment: {
+        Args: {
+          p_establishment_id: string
+          p_reason: Database["public"]["Enums"]["suspension_reason"]
+        }
+        Returns: undefined
+      }
+      platform_grant_admin_role: {
+        Args: {
+          p_actor_user_id: string
+          p_role: Database["public"]["Enums"]["platform_role"]
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       process_overdue_subscriptions: { Args: { p_now?: string }; Returns: Json }
       publish_product: { Args: { p_product_id: string }; Returns: Json }
       request_table_bill: {
